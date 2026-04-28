@@ -3,7 +3,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Ca
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "../../components/ui/Table"
 import { Badge } from "../../components/ui/Badge"
 import { getDashboardStats, getPaymentStatus, getAnalyticsTrends } from "../../api/admin"
-import { Users, Home, IndianRupee, FileText, TrendingUp, AlertTriangle, Loader2 } from "lucide-react"
+import { useAuthStore } from "../../store/useAuthStore"
+import { Users, Home, IndianRupee, FileText, TrendingUp, AlertTriangle, Loader2, Building2 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts"
 import toast from "react-hot-toast"
 
@@ -13,6 +14,7 @@ export default function AdminDashboard() {
   const [trends, setTrends] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("overdue")
+  const { user } = useAuthStore()
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,6 +67,12 @@ export default function AdminDashboard() {
     <div className="space-y-8">
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-foreground">Admin Dashboard</h2>
+        {user?.complex_name && (
+          <div className="flex items-center gap-2 mt-2">
+            <Building2 className="w-4 h-4 text-violet-500" />
+            <span className="text-sm font-semibold text-violet-600 dark:text-violet-400">Society: {user.complex_name}</span>
+          </div>
+        )}
         <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">Overview of your apartment complex.</p>
       </div>
 

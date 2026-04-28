@@ -9,6 +9,18 @@ const upload = require('../middlewares/upload.middleware');
 
 /**
  * @swagger
+ * /auth/complexes:
+ *   get:
+ *     summary: Get list of all complexes for registration
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: List of complexes
+ */
+router.get('/complexes', authController.listComplexes);
+
+/**
+ * @swagger
  * /auth/register:
  *   post:
  *     summary: Register a new resident

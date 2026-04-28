@@ -1,12 +1,13 @@
 const crypto = require('crypto');
 const visitorRepo = require('../repositories/visitor.repository');
-const { getClient } = require('../config/db');
+const { getClient, query } = require('../config/db');
 const { AppError } = require('../middlewares/error.middleware');
+const { notifyMany } = require('./notification.service');
 
 const generateToken = () => crypto.randomBytes(32).toString('hex');
 
 class VisitorService {
-  async createVisitorPass(data, host_id) {
+  async createVisitorPass(data, host_id, io) {
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -24,12 +25,45 @@ class VisitorService {
       const qrCode = await visitorRepo.createQRCode(client, pass.id, token, data.valid_until);
 
       await client.query('COMMIT');
+
+      // Notify all security guards in the host's complex (fire-and-forget)
+      this._notifySecurityGuards(io, host_id, data.visitor_name, data.valid_from).catch(() => {});
+
       return { pass_id: pass.id, qr_token: qrCode.token, expires_at: qrCode.expires_at };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
     } finally {
       client.release();
+    }
+  }
+
+  async _notifySecurityGuards(io, hostId, visitorName, validFrom) {
+    try {
+      // Find the host's complex
+      const hostResult = await query('SELECT complex_id FROM users WHERE id = $1', [hostId]);
+      if (hostResult.rows.length === 0 || !hostResult.rows[0].complex_id) return;
+
+      const complexId = hostResult.rows[0].complex_id;
+
+      // Find all security guards in this complex
+      const guardsResult = await query(
+        `SELECT id FROM users WHERE role = 'security' AND complex_id = $1 AND is_active = true`,
+        [complexId]
+      );
+
+      if (guardsResult.rows.length === 0) return;
+
+      const guardIds = guardsResult.rows.map(r => r.id);
+      const visitDate = new Date(validFrom).toLocaleDateString();
+
+      await notifyMany(io, guardIds, 'new_visitor',
+        'New Visitor Expected',
+        `${visitorName} is expected on ${visitDate}. Please verify at entry.`,
+        { visitor_name: visitorName, valid_from: validFrom }
+      );
+    } catch (err) {
+      // Silent fail — notifications should never crash the main flow
     }
   }
 
@@ -82,8 +116,8 @@ class VisitorService {
     return pass;
   }
 
-  async cancel(pass_id, host_id) {
-    const pass = await visitorRepo.cancelPass(pass_id, host_id);
+  async cancel(pass_id, userId, userRole, complexId) {
+    const pass = await visitorRepo.cancelPass(pass_id, userId, userRole, complexId);
     if (!pass) throw new AppError('Visitor pass not found or cannot be cancelled', 400);
     return pass;
   }

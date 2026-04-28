@@ -36,3 +36,45 @@ export const generateInvoice = async (data) => {
   return res.data
 }
 
+// --- Buildings ---
+export const listBuildings = async () => {
+  const res = await api.get('/admin/buildings')
+  return res.data
+}
+
+export const createBuilding = async (data) => {
+  const res = await api.post('/admin/buildings', data)
+  return res.data
+}
+
+// --- Units ---
+export const createUnit = async (data) => {
+  const res = await api.post('/admin/units', data)
+  return res.data
+}
+
+export const bulkCreateUnits = async (data) => {
+  const res = await api.post('/admin/units/bulk', data)
+  return res.data
+}
+
+export const assignUserToUnit = async (unitId, data) => {
+  const res = await api.post(`/admin/units/${unitId}/assign`, data)
+  return res.data
+}
+
+// --- Vendor Requests (Admin) ---
+export const listVendorRequests = async (params) => {
+  const res = await api.get('/services/admin/vendor-requests', { params })
+  return res.data
+}
+
+export const listVendorsForComplex = async () => {
+  const res = await api.get('/admin/vendors')
+  return res.data
+}
+
+export const assignVendorToRequest = async (requestId, vendorId) => {
+  const res = await api.patch(`/admin/vendor-requests/${requestId}/assign`, { vendor_id: vendorId })
+  return res.data
+}

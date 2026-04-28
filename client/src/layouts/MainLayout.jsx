@@ -19,7 +19,7 @@ import NotificationBell from "../components/layout/NotificationBell"
 
 export default function MainLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const { user, logout } = useAuthStore()
+  const { user, complex, building, unit, logout } = useAuthStore()
   const navigate = useNavigate()
 
   const handleLogout = () => {
@@ -60,6 +60,19 @@ export default function MainLayout() {
           </div>
         </div>
 
+        {/* Complex & Unit Context */}
+        {complex && (
+          <div className="px-4 py-3 border-b border-border/50 bg-secondary/20">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1">Society</p>
+            <p className="text-sm font-semibold text-foreground truncate">{complex.name}</p>
+            {(building || unit) && (
+              <p className="text-xs text-gray-500 mt-0.5 truncate">
+                {building ? building.name : ''}{building && unit ? ' • ' : ''}{unit ? `Unit ${unit.unit_number}` : ''}
+              </p>
+            )}
+          </div>
+        )}
+
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1 custom-scrollbar">
           {navigation.map((item) => (
             <NavLink
@@ -90,7 +103,7 @@ export default function MainLayout() {
             />
             <div className="ml-3 truncate">
               <p className="text-sm font-medium text-foreground truncate">{user?.full_name}</p>
-              <p className="text-xs text-gray-500 truncate capitalize">{user?.role} {user?.unit ? `• ${user.unit}` : ''}</p>
+              <p className="text-xs text-gray-500 truncate capitalize">{user?.role}{unit ? ` • ${unit.unit_number}` : ''}</p>
             </div>
           </div>
           <button

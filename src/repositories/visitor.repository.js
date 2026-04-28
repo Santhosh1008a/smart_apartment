@@ -45,7 +45,10 @@ class VisitorRepository {
 
   async findPassesByHost(host_id) {
     const res = await query(
-      `SELECT * FROM visitor_passes WHERE host_user_id = $1 ORDER BY created_at DESC`,
+      `SELECT vp.*, qr.token AS qr_token
+       FROM visitor_passes vp
+       LEFT JOIN qr_codes qr ON qr.visitor_pass_id = vp.id
+       WHERE vp.host_user_id = $1 ORDER BY vp.created_at DESC`,
       [host_id]
     );
     return res.rows;
@@ -60,11 +63,21 @@ class VisitorRepository {
     return res.rows[0];
   }
 
-  async cancelPass(pass_id, host_id) {
+  async cancelPass(pass_id, userId, userRole, complexId) {
     const res = await query(
-      `UPDATE visitor_passes SET status = 'cancelled' 
-       WHERE id = $1 AND host_user_id = $2 AND status = 'pending' RETURNING *`,
-      [pass_id, host_id]
+      `UPDATE visitor_passes vp
+       SET status = 'cancelled'
+       FROM users u
+       WHERE vp.id = $1
+         AND u.id = vp.host_user_id
+         AND (
+           vp.host_user_id = $2
+           OR $3 IN ('admin', 'super_admin')
+         )
+         AND (u.complex_id = $4 OR $4 IS NULL)
+         AND vp.status NOT IN ('cancelled', 'completed')
+       RETURNING vp.*`,
+      [pass_id, userId, userRole, complexId]
     );
     return res.rows[0];
   }

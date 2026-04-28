@@ -8,6 +8,7 @@ const {
   createComplexSchema,
   createBuildingSchema,
   createUnitSchema,
+  bulkCreateUnitsSchema,
   updateUnitStatusSchema,
   assignUserToUnitSchema,
   updateUserRoleSchema,
@@ -28,13 +29,20 @@ router.get('/users', validateQuery(listUsersQuerySchema), adminController.listUs
 router.get('/users/:id', adminController.getUserDetail);
 router.patch('/users/:id', validate(updateUserRoleSchema), adminController.updateUserRole);
 
-// Properties (Complex, Building, Units)
-router.post('/complexes', validate(createComplexSchema), adminController.createComplex);
+// Buildings
+router.get('/buildings', adminController.listBuildings);
 router.post('/buildings', validate(createBuildingSchema), adminController.createBuilding);
 
+// Units
 router.post('/units', validate(createUnitSchema), adminController.createUnit);
+router.post('/units/bulk', validate(bulkCreateUnitsSchema), adminController.bulkCreateUnits);
 router.get('/units', adminController.listUnits);
 router.patch('/units/:id', validate(updateUnitStatusSchema), adminController.updateUnitStatus);
 router.post('/units/:id/assign', validate(assignUserToUnitSchema), adminController.assignUserToUnit);
+
+// Vendor & Security management
+router.get('/vendors', adminController.listVendorsInComplex);
+router.get('/security-staff', adminController.listSecurityInComplex);
+router.patch('/vendor-requests/:id/assign', adminController.assignVendorToRequest);
 
 module.exports = router;

@@ -16,7 +16,7 @@ exports.requireAuth = async (req, res, next) => {
     }
 
     // Verify user still exists and is active
-    const { rows } = await query('SELECT id, role, is_active FROM users WHERE id = $1', [decoded.id]);
+    const { rows } = await query('SELECT id, role, is_active, complex_id, vendor_category FROM users WHERE id = $1', [decoded.id]);
     if (rows.length === 0 || !rows[0].is_active) {
       return res.status(401).json({ success: false, message: 'User not found or deactivated' });
     }

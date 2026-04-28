@@ -16,7 +16,8 @@ router.use(resolveTenant);
 
 // Emergency
 router.post('/emergencies', validate(triggerEmergencySchema), servicesController.triggerEmergency);
-router.get('/emergencies', requireRole(['admin', 'security', 'super_admin']), servicesController.listEmergencies);
+router.get('/emergencies', requireRole(['admin', 'security', 'super_admin', 'resident']), servicesController.listEmergencies);
+router.patch('/emergencies/:id', requireRole(['admin', 'security', 'super_admin', 'resident']), servicesController.resolveEmergency);
 
 // Parking
 router.get('/parking/slots', servicesController.listAvailableSlots);
@@ -27,5 +28,8 @@ router.post('/admin/parking/assign', requireRole(['admin', 'super_admin']), vali
 router.get('/vendors', validateQuery(listVendorsQuerySchema), servicesController.listVendors);
 router.get('/vendor-requests', servicesController.listMyVendorRequests);
 router.post('/vendor-requests', validate(raiseVendorRequestSchema), servicesController.raiseVendorRequest);
+
+// Admin: all vendor requests in complex
+router.get('/admin/vendor-requests', requireRole(['admin', 'super_admin']), servicesController.listAllVendorRequests);
 
 module.exports = router;

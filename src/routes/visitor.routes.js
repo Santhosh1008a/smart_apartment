@@ -11,6 +11,7 @@ router.get('/', visitorController.listMyPasses);
 router.post('/', validate(createPassSchema), visitorController.createPass);
 router.post('/verify-qr', validate(verifyQRSchema), visitorController.verifyQR);
 router.post('/:id/checkout', visitorController.checkoutVisitor);
+router.patch('/:id/cancel', visitorController.cancelPass);
 router.delete('/:id', visitorController.cancelPass);
 
 module.exports = router;

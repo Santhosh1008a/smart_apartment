@@ -13,7 +13,9 @@ import {
   Menu,
   Settings,
   Bell,
-  ChevronRight
+  ChevronRight,
+  DoorOpen,
+  Wrench
 } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
@@ -32,6 +34,11 @@ export default function AdminLayout() {
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { name: "Manage Users", href: "/admin/users", icon: UserCog },
     { name: "Invoices & Billing", href: "/admin/invoices", icon: FileText },
+    { type: "separator", label: "Property Management" },
+    { name: "Buildings", href: "/admin/buildings", icon: Building2 },
+    { name: "Units", href: "/admin/units", icon: DoorOpen },
+    { type: "separator", label: "Services" },
+    { name: "Vendor Requests", href: "/admin/vendor-requests", icon: Wrench },
   ]
 
   return (
@@ -60,7 +67,14 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1 custom-scrollbar">
-          {navigation.map((item) => (
+          {navigation.map((item, idx) =>
+            item.type === "separator" ? (
+              <div key={idx} className="pt-5 pb-2 px-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                  {item.label}
+                </p>
+              </div>
+            ) : (
             <NavLink
               key={item.href}
               to={item.href}
@@ -76,7 +90,8 @@ export default function AdminLayout() {
               <item.icon className={cn("mr-3 h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110")} />
               {item.name}
             </NavLink>
-          ))}
+            )
+          )}
         </nav>
 
         <div className="p-4 border-t border-border mt-auto">

@@ -9,7 +9,7 @@ const pool = new Pool({
 
 async function run() {
   try {
-    const sql = fs.readFileSync(path.join(__dirname, 'migrations', '004_notifications.sql'), 'utf8');
+    const sql = fs.readFileSync(path.join(__dirname, 'migrations', '005_add_complex_id_to_users.sql'), 'utf8');
     console.log('Running migration...');
     await pool.query(sql);
     console.log('Migration successful.');

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { CreditCard, CheckCircle2, FileText, ArrowUpRight, DollarSign, Loader2, AlertCircle, Building2 } from "lucide-react"
+import { CreditCard, CheckCircle2, FileText, ArrowUpRight, IndianRupee, Loader2, AlertCircle, Building2, DoorOpen, MapPin } from "lucide-react"
 import { Button } from "../../components/ui/Button"
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Card"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "../../components/ui/Table"
@@ -20,7 +20,7 @@ const loadRazorpayScript = () => {
 }
 
 export default function Payments() {
-  const { user } = useAuthStore()
+  const { user, complex, building, unit } = useAuthStore()
   const [isPayModalOpen, setIsPayModalOpen] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -132,9 +132,23 @@ export default function Payments() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">Payments & Invoices</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage your maintenance dues and view history</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Payments & Invoices</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage your maintenance dues and view history</p>
+        </div>
+        {unit && (
+          <div className="flex items-center gap-2 text-sm bg-secondary/50 border border-border rounded-lg px-3 py-2">
+            <DoorOpen className="w-4 h-4 text-primary" />
+            <span className="font-medium text-foreground">Unit {unit.unit_number}</span>
+            {building && (
+              <>
+                <span className="text-gray-300">•</span>
+                <span className="text-gray-500">{building.name}</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -146,7 +160,7 @@ export default function Payments() {
                 <h3 className="text-4xl font-bold mt-2">₹{totalDue.toLocaleString()}</h3>
               </div>
               <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                <DollarSign className="w-6 h-6 text-white" />
+                <IndianRupee className="w-6 h-6 text-white" />
               </div>
             </div>
             <div className="mt-6 flex items-center text-sm font-medium text-primary-foreground/90">

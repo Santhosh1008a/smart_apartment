@@ -6,6 +6,11 @@ export const useAuthStore = create((set) => ({
   refreshToken: localStorage.getItem('refreshToken') || null,
   isAuthenticated: !!localStorage.getItem('accessToken'),
 
+  // Unit context (populated from /auth/me)
+  complex: JSON.parse(localStorage.getItem('complex')) || null,
+  building: JSON.parse(localStorage.getItem('building')) || null,
+  unit: JSON.parse(localStorage.getItem('unit')) || null,
+
   login: (userData, token, refreshToken) => {
     localStorage.setItem('user', JSON.stringify(userData))
     localStorage.setItem('accessToken', token)
@@ -17,7 +22,10 @@ export const useAuthStore = create((set) => ({
     localStorage.removeItem('user')
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
-    set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false })
+    localStorage.removeItem('complex')
+    localStorage.removeItem('building')
+    localStorage.removeItem('unit')
+    set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false, complex: null, building: null, unit: null })
   },
 
   setToken: (token) => {
@@ -29,5 +37,16 @@ export const useAuthStore = create((set) => ({
   setUser: (userData) => {
     localStorage.setItem('user', JSON.stringify(userData))
     set({ user: userData })
+  },
+
+  // Set full context from /auth/me response
+  setContext: (complex, building, unit) => {
+    if (complex) localStorage.setItem('complex', JSON.stringify(complex))
+    else localStorage.removeItem('complex')
+    if (building) localStorage.setItem('building', JSON.stringify(building))
+    else localStorage.removeItem('building')
+    if (unit) localStorage.setItem('unit', JSON.stringify(unit))
+    else localStorage.removeItem('unit')
+    set({ complex, building, unit })
   },
 }))

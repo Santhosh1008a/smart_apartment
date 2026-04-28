@@ -19,6 +19,7 @@ CREATE TABLE users (
                 CHECK (role IN ('resident','admin','super_admin','security','vendor')),
   is_active     BOOLEAN      NOT NULL DEFAULT true,
   avatar_url    TEXT,
+  complex_id    UUID         REFERENCES complexes(id) ON DELETE SET NULL,
   created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
@@ -219,6 +220,7 @@ CREATE TABLE vendor_requests (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id     UUID        NOT NULL REFERENCES users(id),
   unit_id     UUID        NOT NULL REFERENCES units(id),
+  assigned_vendor_id UUID REFERENCES users(id) ON DELETE SET NULL,
   category    VARCHAR(50) NOT NULL,
   description TEXT,
   priority    VARCHAR(20) NOT NULL DEFAULT 'medium'
@@ -233,6 +235,7 @@ CREATE TABLE vendor_requests (
 -- ============================================================
 CREATE INDEX idx_users_email        ON users(email);
 CREATE INDEX idx_users_role         ON users(role);
+CREATE INDEX idx_users_complex_id   ON users(complex_id);
 CREATE INDEX idx_user_units_user    ON user_units(user_id);
 CREATE INDEX idx_user_units_unit    ON user_units(unit_id);
 CREATE INDEX idx_invoices_unit      ON invoices(unit_id);

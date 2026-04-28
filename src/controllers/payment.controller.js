@@ -57,16 +57,31 @@ exports.generateInvoice = async (req, res, next) => {
 exports.listMyInvoices = async (req, res, next) => {
   try {
     const user_id = req.user.id;
-    // Get invoices for the units this user occupies
-    const { rows } = await query(`
-      SELECT i.*, u.unit_number, b.name as building_name
-      FROM invoices i
-      JOIN units u ON i.unit_id = u.id
-      JOIN buildings b ON u.building_id = b.id
-      JOIN user_units uu ON uu.unit_id = u.id
-      WHERE uu.user_id = $1 AND uu.moved_out_at IS NULL
-      ORDER BY i.due_date DESC
-    `, [user_id]);
+
+    // Step 1: Get all active unit IDs for this user
+    const unitRes = await query(
+      `SELECT unit_id FROM user_units WHERE user_id = $1 AND moved_out_at IS NULL`,
+      [user_id]
+    );
+
+    if (unitRes.rows.length === 0) {
+      // User not assigned to any unit yet — return empty list
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const unitIds = unitRes.rows.map(r => r.unit_id);
+
+    // Step 2: Fetch all invoices for those units
+    const placeholders = unitIds.map((_, i) => `$${i + 1}`).join(', ');
+    const { rows } = await query(
+      `SELECT i.*, u.unit_number, b.name as building_name
+       FROM invoices i
+       JOIN units u ON i.unit_id = u.id
+       JOIN buildings b ON u.building_id = b.id
+       WHERE i.unit_id IN (${placeholders})
+       ORDER BY i.due_date DESC`,
+      unitIds
+    );
 
     res.status(200).json({ success: true, data: rows });
   } catch (err) {
@@ -79,9 +94,19 @@ exports.createOrder = async (req, res, next) => {
   try {
     const { invoice_id } = req.body;
     const user_id = req.user.id;
+    const complexId = req.user.complex_id;
 
-    const invoiceCheck = await query('SELECT id, amount, status FROM invoices WHERE id = $1', [invoice_id]);
-    if (invoiceCheck.rows.length === 0) return next(new AppError('Invoice not found', 404));
+    // Verify invoice exists AND belongs to user's complex
+    const invoiceCheck = await query(
+      `SELECT i.id, i.amount, i.status
+       FROM invoices i
+       JOIN units un ON i.unit_id = un.id
+       JOIN buildings b ON un.building_id = b.id
+       JOIN user_units uu ON uu.unit_id = un.id AND uu.moved_out_at IS NULL
+       WHERE i.id = $1 AND uu.user_id = $2 AND b.complex_id = $3`,
+      [invoice_id, user_id, complexId]
+    );
+    if (invoiceCheck.rows.length === 0) return next(new AppError('Invoice not found or not yours', 404));
 
     const invoice = invoiceCheck.rows[0];
     if (['paid', 'waived'].includes(invoice.status)) {
@@ -148,6 +173,15 @@ exports.verifyPayment = async (req, res, next) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const user_id = req.user.id;
+
+    // --- Idempotency: check if already processed ---
+    const dupeCheck = await query(
+      `SELECT id FROM razorpay_txns WHERE rz_payment_id = $1`,
+      [razorpay_payment_id]
+    );
+    if (dupeCheck.rows.length > 0) {
+      return res.status(200).json({ success: true, message: 'Payment already verified' });
+    }
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 

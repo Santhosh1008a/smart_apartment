@@ -65,6 +65,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Join complex/society room for society-wide broadcasts (emergencies, etc.)
+  socket.on('join_complex_room', (complexId) => {
+    if (complexId) {
+      socket.join(`complex:${complexId}`);
+      logger.info(`Socket ${socket.id} joined room complex:${complexId}`);
+    }
+  });
+
   socket.on('disconnect', () => {
     logger.info(`Client disconnected: ${socket.id}`);
   });
@@ -134,6 +142,8 @@ const notificationRoutes = require('./routes/notification.routes');
 // Mount Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/admin', adminRoutes);
+const superAdminRoutes = require('./routes/super-admin.routes');
+app.use('/api/v1/super-admin', superAdminRoutes);
 app.use('/api/v1/visitors', visitorRoutes);
 app.use('/api/v1', paymentRoutes);
 app.use('/api/v1/services', serviceRoutes);
@@ -157,6 +167,11 @@ const PORT = process.env.PORT || 5000;
 if (require.main === module) {
   server.listen(PORT, () => {
     logger.info(`Server is running with WebSocket enabled on port ${PORT}`);
+
+    // Start scheduled jobs
+    const { startDueReminderJob, startMonthlyInvoiceJob } = require('./jobs/cron');
+    startDueReminderJob(io);
+    startMonthlyInvoiceJob();
   });
 }
 

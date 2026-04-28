@@ -8,9 +8,6 @@ const createComplexSchema = Joi.object({
 });
 
 const createBuildingSchema = Joi.object({
-  complex_id: Joi.string().pattern(uuidPattern).required().messages({
-    'string.pattern.base': 'complex_id must be a valid UUID',
-  }),
   name: Joi.string().trim().min(1).max(255).required(),
   total_floors: Joi.number().integer().min(1).max(200).default(1),
 });
@@ -27,6 +24,18 @@ const createUnitSchema = Joi.object({
   status: Joi.string()
     .valid('vacant', 'occupied', 'maintenance')
     .default('vacant'),
+});
+
+const bulkCreateUnitsSchema = Joi.object({
+  building_id: Joi.string().pattern(uuidPattern).required().messages({
+    'string.pattern.base': 'building_id must be a valid UUID',
+  }),
+  prefix: Joi.string().trim().min(1).max(10).required(),
+  start: Joi.number().integer().min(1).required(),
+  end: Joi.number().integer().min(Joi.ref('start')).required().messages({
+    'number.min': 'end must be greater than or equal to start',
+  }),
+  floor: Joi.number().integer().min(0).max(200).allow(null),
 });
 
 const updateUnitStatusSchema = Joi.object({
@@ -48,8 +57,16 @@ const updateUserRoleSchema = Joi.object({
     .valid('resident', 'admin', 'super_admin', 'security', 'vendor')
     .optional(),
   is_active: Joi.boolean().optional(),
+  vendor_category: Joi.string()
+    .valid('plumber', 'electrician', 'carpenter', 'painter', 'cleaner', 'security', 'other')
+    .optional()
+    .when('role', {
+      is: 'vendor',
+      then: Joi.required(),
+      otherwise: Joi.optional().allow(null, ''),
+    }),
 }).min(1).messages({
-  'object.min': 'At least one field (role or is_active) must be provided',
+  'object.min': 'At least one field must be provided',
 });
 
 const listUsersQuerySchema = Joi.object({
@@ -62,8 +79,10 @@ module.exports = {
   createComplexSchema,
   createBuildingSchema,
   createUnitSchema,
+  bulkCreateUnitsSchema,
   updateUnitStatusSchema,
   assignUserToUnitSchema,
   updateUserRoleSchema,
   listUsersQuerySchema,
 };
+

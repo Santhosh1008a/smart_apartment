@@ -20,17 +20,8 @@ const resolveTenant = async (req, res, next) => {
       return next();
     }
 
-    const { rows } = await query(
-      `SELECT DISTINCT b.complex_id 
-       FROM user_units uu
-       JOIN units u ON uu.unit_id = u.id
-       JOIN buildings b ON u.building_id = b.id
-       WHERE uu.user_id = $1 AND uu.moved_out_at IS NULL
-       LIMIT 1`,
-      [req.user.id]
-    );
-
-    req.complexId = rows.length > 0 ? rows[0].complex_id : null;
+    // Admins and other roles now have complex_id directly on the user record.
+    req.complexId = req.user.complex_id || null;
     next();
   } catch (error) {
     next(error);
@@ -43,6 +34,11 @@ const resolveTenant = async (req, res, next) => {
  * Apply this on routes that REQUIRE complex scoping.
  */
 const requireTenant = (req, res, next) => {
+  // Ensure req.complexId is populated
+  if (!req.complexId && req.user && req.user.complex_id) {
+    req.complexId = req.user.complex_id;
+  }
+
   if (!req.complexId) {
     return res.status(403).json({
       success: false,

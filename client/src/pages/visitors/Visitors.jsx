@@ -1,22 +1,25 @@
-import { useState, useEffect } from "react"
-import { Plus, Search, QrCode as QrCodeIcon, Calendar, Clock, MoreVertical, Loader2 } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Plus, Search, QrCode as QrCodeIcon, Calendar, Clock, MoreVertical, Loader2, Trash2, X } from "lucide-react"
 import { Button } from "../../components/ui/Button"
 import { Input } from "../../components/ui/Input"
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Card"
 import { Badge } from "../../components/ui/Badge"
 import { Modal } from "../../components/ui/Modal"
-import { listMyPasses, createVisitorPass } from "../../api/visitors"
-import QRCode from "react-qr-code"
+import { listMyPasses, createVisitorPass, cancelVisitorPass } from "../../api/visitors"
+import { QRCodeSVG } from "qrcode.react"
 import toast from "react-hot-toast"
 
 export default function Visitors() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isQrOpen, setIsQrOpen] = useState(false)
   const [selectedPass, setSelectedPass] = useState(null)
+  const [openMenuId, setOpenMenuId] = useState(null)
+  const menuRef = useRef(null)
   
   const [passes, setPasses] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(null)
 
   // New Pass Form State
   const [newPass, setNewPass] = useState({ name: "", phone: "", type: "Guest", date: "", time: "" })
@@ -37,6 +40,17 @@ export default function Visitors() {
 
   useEffect(() => {
     fetchPasses()
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuId(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
   const handleCreateSubmit = async (e) => {
@@ -67,6 +81,22 @@ export default function Visitors() {
       toast.error(err.response?.data?.message || "Failed to generate pass")
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  const handleDelete = async (passId) => {
+    setIsDeleting(passId)
+    try {
+      const res = await cancelVisitorPass(passId)
+      if (res.success) {
+        toast.success("Pass cancelled successfully")
+        setOpenMenuId(null)
+        fetchPasses()
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to cancel pass")
+    } finally {
+      setIsDeleting(null)
     }
   }
 
@@ -127,33 +157,61 @@ export default function Visitors() {
              </div>
           ) : (
             <div className="divide-y divide-border/50">
-              {passes.map((pass) => (
-                <div key={pass.id} className="p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between group hover:bg-secondary/20 transition-colors">
+              {Array.isArray(passes) && passes.map((pass) => (
+                <div key={pass?.id} className="p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between group hover:bg-secondary/20 transition-colors">
                   <div className="flex items-center space-x-4 w-full">
                     <div className="hidden sm:flex w-12 h-12 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/50 dark:to-purple-900/50 items-center justify-center text-xl font-bold text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shadow-sm">
-                      {pass.visitor_name.charAt(0)}
+                      {pass?.visitor_name?.charAt(0) || '?'}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center space-x-2">
-                        <p className="font-semibold text-foreground text-base">{pass.visitor_name}</p>
-                        {getStatusBadge(pass.status)}
+                        <p className="font-semibold text-foreground text-base">{pass?.visitor_name || 'Unknown'}</p>
+                        {getStatusBadge(pass?.status)}
                       </div>
                       <div className="flex flex-wrap items-center text-sm text-gray-500 mt-1.5 gap-3">
-                        <span className="flex items-center"><Badge variant="outline" className="text-[10px] leading-3 py-0 pb-0.5 border-border">{pass.purpose}</Badge></span>
+                        <span className="flex items-center"><Badge variant="outline" className="text-[10px] leading-3 py-0 pb-0.5 border-border">{pass?.purpose}</Badge></span>
                         <span className="flex items-center text-gray-400">•</span>
-                        <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5" /> {new Date(pass.valid_from).toLocaleDateString()}</span>
+                        <span className="flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5" /> {pass?.valid_from ? new Date(pass.valid_from).toLocaleDateString() : 'N/A'}</span>
                         <span className="flex items-center text-gray-400 hidden sm:block">•</span>
-                        <span className="flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5" /> {new Date(pass.valid_from).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5" /> {pass?.valid_from ? new Date(pass.valid_from).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center w-full sm:w-auto mt-4 sm:mt-0 justify-end space-x-2 border-t sm:border-t-0 pt-4 sm:pt-0 border-border/50">
-                    <Button variant="outline" size="sm" onClick={() => openQrModal(pass)} disabled={pass.status === 'cancelled' || pass.status === 'completed'} className="w-full sm:w-auto hover:bg-primary/5 hover:text-primary hover:border-primary/50 transition-colors">
+                    <Button variant="outline" size="sm" onClick={() => openQrModal(pass)} disabled={pass?.status === 'cancelled' || pass?.status === 'completed'} className="w-full sm:w-auto hover:bg-primary/5 hover:text-primary hover:border-primary/50 transition-colors">
                       <QrCodeIcon className="w-4 h-4 mr-2" /> View QR
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-gray-400 hover:text-foreground hidden sm:flex">
-                      <MoreVertical className="w-5 h-5" />
-                    </Button>
+                    
+                    {/* 3-dot dropdown menu */}
+                    <div className="relative" ref={openMenuId === pass?.id ? menuRef : null}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-gray-400 hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenMenuId(openMenuId === pass?.id ? null : pass?.id)
+                        }}
+                      >
+                        <MoreVertical className="w-5 h-5" />
+                      </Button>
+                      {openMenuId === pass?.id && (
+                        <div className="absolute right-0 mt-1 w-40 bg-card border border-border rounded-lg shadow-xl z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                          <button
+                            disabled={isDeleting === pass?.id || pass?.status === 'cancelled'}
+                            onClick={() => handleDelete(pass?.id)}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {isDeleting === pass?.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                            Cancel Pass
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -207,40 +265,52 @@ export default function Visitors() {
       </Modal>
 
       {/* View QR Modal */}
-      <Modal isOpen={isQrOpen} onClose={() => setIsQrOpen(false)} title="Visitor QR Pass">
-        {selectedPass && (
-          <div className="flex flex-col items-center justify-center p-6 space-y-8 animate-in zoom-in-95 duration-300">
-            <div className="text-center">
-              <h3 className="text-2xl font-bold text-foreground">{selectedPass.visitor_name}</h3>
-              <div className="flex items-center justify-center space-x-2 mt-2">
-                <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5">{selectedPass.purpose}</Badge>
-                <span className="text-gray-400">•</span>
-                <span className="text-sm font-medium text-gray-500">{new Date(selectedPass.valid_from).toLocaleDateString()}</span>
+      {isQrOpen && selectedPass && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200" onClick={() => setIsQrOpen(false)}>
+          <div className="bg-card text-card-foreground w-full max-w-md rounded-xl shadow-2xl border animate-in zoom-in-95 duration-200 p-6 relative flex flex-col m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Visitor QR Pass</h2>
+              <button onClick={() => setIsQrOpen(false)} className="p-1.5 rounded-md hover:bg-secondary text-gray-500 hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex flex-col items-center justify-center p-4 space-y-6">
+              <div className="text-center">
+                <h3 className="text-2xl font-bold text-foreground">{selectedPass.visitor_name}</h3>
+                <div className="flex items-center justify-center space-x-2 mt-2">
+                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5">{selectedPass.purpose}</Badge>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-sm font-medium text-gray-500">{new Date(selectedPass.valid_from).toLocaleDateString()}</span>
+                </div>
               </div>
+              
+              <div className="bg-white p-6 rounded-2xl shadow-[inset_0_-4px_6px_rgba(0,0,0,0.05),0_10px_15px_-3px_rgba(0,0,0,0.1)] border border-gray-100 relative overflow-hidden w-full max-w-[260px] mx-auto flex justify-center items-center">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-purple-500 to-pink-500" />
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+                <div style={{ background: 'white', padding: '16px' }}>
+                  <QRCodeSVG 
+                    value={String(selectedPass.qr_token || selectedPass.id || "N/A")} 
+                    size={180} 
+                  />
+                </div>
+              </div>
+              
+              <div className="w-full bg-secondary/40 rounded-xl p-4 text-center border border-border shadow-inner">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Pass ID</p>
+                <p className="text-2xl font-mono font-bold tracking-[0.3em] text-foreground">{(selectedPass.id || "").toString().split('-')[0].toUpperCase() || "N/A"}</p>
+              </div>
+              
+              <p className="text-xs text-center text-gray-500 max-w-xs">
+                Valid until: {selectedPass.valid_until ? new Date(selectedPass.valid_until).toLocaleString() : 'N/A'}
+              </p>
+              
+              <Button className="w-full h-11 text-base shadow-md" onClick={() => setIsQrOpen(false)}>
+                Done
+              </Button>
             </div>
-            
-            <div className="bg-white p-6 rounded-2xl shadow-[inset_0_-4px_6px_rgba(0,0,0,0.05),0_10px_15px_-3px_rgba(0,0,0,0.1)] border border-gray-100 relative overflow-hidden group">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-purple-500 to-pink-500" />
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
-              {/* Note: The exact QR token is bound to the inner pass. Real systems would fetch it directly if sensitive. Currently we simulate it with ID if direct token isn't returned on list */}
-              <QRCode value={selectedPass.id} size={220} className="rounded-md" />
-            </div>
-            
-            <div className="w-full bg-secondary/40 rounded-xl p-4 text-center border border-border shadow-inner">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Pass ID</p>
-              <p className="text-2xl font-mono font-bold tracking-[0.3em] text-foreground">{selectedPass.id.split('-')[0].toUpperCase()}</p>
-            </div>
-            
-            <p className="text-xs text-center text-gray-500 max-w-xs mt-2">
-              Valid until: {new Date(selectedPass.valid_until).toLocaleString()}
-            </p>
-            
-            <Button className="w-full h-11 text-base shadow-md" onClick={() => setIsQrOpen(false)}>
-              Share Pass Code
-            </Button>
           </div>
-        )}
-      </Modal>
+        </div>
+      )}
     </div>
   )
 }

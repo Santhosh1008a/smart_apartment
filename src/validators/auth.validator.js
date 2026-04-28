@@ -20,6 +20,10 @@ const registerSchema = Joi.object({
     'string.min': 'Name must be at least 2 characters',
     'any.required': 'Full name is required',
   }),
+  complex_id: Joi.string().uuid().required().messages({
+    'string.guid': 'Please provide a valid complex ID',
+    'any.required': 'Complex selection is required',
+  }),
   // NOTE: 'role' is intentionally excluded — public registration always defaults to 'resident'
 });
 

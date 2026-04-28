@@ -2,15 +2,29 @@ import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { Button } from "../../components/ui/Button"
 import { Input } from "../../components/ui/Input"
-import { registerUser } from "../../api/auth"
-import { Mail, Lock, User, Phone, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { registerUser, getComplexes } from "../../api/auth"
+import { Mail, Lock, User, Phone, Loader2, AlertCircle, CheckCircle2, Building } from "lucide-react"
+import { useEffect } from "react"
 
 export default function Register() {
-  const [formData, setFormData] = useState({ full_name: "", email: "", phone: "", password: "" })
+  const [formData, setFormData] = useState({ full_name: "", email: "", phone: "", password: "", complex_id: "" })
+  const [complexes, setComplexes] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const fetchComplexes = async () => {
+      try {
+        const res = await getComplexes()
+        if (res.success) setComplexes(res.data)
+      } catch (err) {
+        console.error("Failed to fetch complexes", err)
+      }
+    }
+    fetchComplexes()
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -58,6 +72,26 @@ export default function Register() {
             <User className="h-4 w-4" />
           </div>
           <Input required type="text" name="name" autoComplete="name" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} className="pl-10 h-11" placeholder="John Doe" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-foreground mb-1">Society / Complex</label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+            <Building className="h-4 w-4" />
+          </div>
+          <select 
+            required 
+            value={formData.complex_id} 
+            onChange={e => setFormData({...formData, complex_id: e.target.value})} 
+            className="flex h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 pl-10"
+          >
+            <option value="" disabled>Select your society</option>
+            {complexes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 

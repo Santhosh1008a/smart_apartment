@@ -1,5 +1,7 @@
+import { useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { useAuthStore } from "./store/useAuthStore"
+import { getMe } from "./api/auth"
 
 import AuthLayout from "./layouts/AuthLayout"
 import Login from "./pages/auth/Login"
@@ -17,12 +19,18 @@ import AdminLayout from "./layouts/AdminLayout"
 import AdminDashboard from "./pages/admin/AdminDashboard"
 import AdminInvoices from "./pages/admin/AdminInvoices"
 import AdminUsers from "./pages/admin/AdminUsers"
+import AdminBuildings from "./pages/admin/AdminBuildings"
+import AdminUnits from "./pages/admin/AdminUnits"
+import AdminVendorRequests from "./pages/admin/AdminVendorRequests"
 
 import SecurityLayout from "./layouts/SecurityLayout"
 import SecurityDashboard from "./pages/security/SecurityDashboard"
 
 import VendorLayout from "./layouts/VendorLayout"
 import VendorDashboard from "./pages/vendor/VendorDashboard"
+
+import SuperAdminLayout from "./layouts/SuperAdminLayout"
+import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard"
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -45,8 +53,9 @@ const RoleProtectedRoute = ({ allowedRoles, children }) => {
 export const getRoleBasedPath = (role) => {
   switch (role) {
     case "admin":
-    case "super_admin":
       return "/admin"
+    case "super_admin":
+      return "/super-admin"
     case "security":
       return "/security"
     case "vendor":
@@ -57,6 +66,22 @@ export const getRoleBasedPath = (role) => {
 }
 
 function App() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const setUser = useAuthStore((state) => state.setUser)
+  const setContext = useAuthStore((state) => state.setContext)
+
+  // Hydrate user data (including complex_name) on mount
+  useEffect(() => {
+    if (isAuthenticated) {
+      getMe().then((res) => {
+        if (res.success) {
+          setUser(res.data)
+          setContext(res.complex || null, res.building || null, res.unit || null)
+        }
+      }).catch(() => {})
+    }
+  }, [isAuthenticated, setUser, setContext])
+
   return (
     <BrowserRouter>
       <Routes>
@@ -87,7 +112,7 @@ function App() {
         <Route
           path="/admin"
           element={
-            <RoleProtectedRoute allowedRoles={["admin", "super_admin"]}>
+            <RoleProtectedRoute allowedRoles={["admin"]}>
               <AdminLayout />
             </RoleProtectedRoute>
           }
@@ -95,6 +120,9 @@ function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="invoices" element={<AdminInvoices />} />
+          <Route path="buildings" element={<AdminBuildings />} />
+          <Route path="units" element={<AdminUnits />} />
+          <Route path="vendor-requests" element={<AdminVendorRequests />} />
         </Route>
 
         {/* Security Routes */}
@@ -109,7 +137,6 @@ function App() {
           <Route index element={<SecurityDashboard />} />
         </Route>
 
-        {/* Vendor Routes */}
         <Route
           path="/vendor"
           element={
@@ -119,6 +146,18 @@ function App() {
           }
         >
           <Route index element={<VendorDashboard />} />
+        </Route>
+
+        {/* Super Admin Routes */}
+        <Route
+          path="/super-admin"
+          element={
+            <RoleProtectedRoute allowedRoles={["super_admin"]}>
+              <SuperAdminLayout />
+            </RoleProtectedRoute>
+          }
+        >
+          <Route index element={<SuperAdminDashboard />} />
         </Route>
 
         {/* Fallback */}

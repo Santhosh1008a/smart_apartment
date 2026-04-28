@@ -12,7 +12,17 @@ const generateInvoiceSchema = Joi.object({
   amount: Joi.number().positive().precision(2).required().messages({
     'number.positive': 'Amount must be greater than 0',
   }),
-  due_date: Joi.date().iso().required(),
+  due_date: Joi.date().iso().required().custom((value, helpers) => {
+    // Allow today or any future date (ignore time component)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (value < today) {
+      return helpers.error('date.min');
+    }
+    return value;
+  }).messages({
+    'date.min': 'due_date must be today or in the future',
+  }),
   period_start: Joi.date().iso().allow(null),
   period_end: Joi.date().iso().allow(null),
 });

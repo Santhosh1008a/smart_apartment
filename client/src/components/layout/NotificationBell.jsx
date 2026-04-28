@@ -35,11 +35,14 @@ export default function NotificationBell() {
 
     socket.on("connect", () => {
       socket.emit("join_user_room", user.id)
+      // Also join complex room for society-wide broadcasts (emergencies)
+      if (user.complex_id) {
+        socket.emit("join_complex_room", user.complex_id)
+      }
     })
 
     socket.on("notification", (notification) => {
       addRealtimeNotification(notification)
-      // Play sound or show toast here if desired
     })
 
     return () => socket.disconnect()

@@ -2,7 +2,8 @@ const visitorService = require('../services/visitor.service');
 
 exports.createPass = async (req, res, next) => {
   try {
-    const result = await visitorService.createVisitorPass(req.body, req.user.id);
+    const io = req.app.get('io');
+    const result = await visitorService.createVisitorPass(req.body, req.user.id, io);
     res.status(201).json({
       success: true,
       data: result
@@ -41,7 +42,10 @@ exports.checkoutVisitor = async (req, res, next) => {
 
 exports.cancelPass = async (req, res, next) => {
   try {
-    const result = await visitorService.cancel(req.params.id, req.user.id);
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const complexId = req.user.complex_id;
+    const result = await visitorService.cancel(req.params.id, userId, userRole, complexId);
     res.status(200).json({ success: true, message: 'Pass cancelled', data: result });
   } catch (err) {
     next(err);
