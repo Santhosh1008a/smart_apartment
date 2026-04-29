@@ -1,0 +1,632 @@
+# 🏢 Smart Apartment Management System — Architecture Document
+
+> **Agent**: Architect  
+> **Stack**: React + Tailwind · Node.js + Express · PostgreSQL · Razorpay  
+> **Date**: 2026-03-18
+
+---
+
+## 1. Database Schema
+
+### 1.1 Entity-Relationship Overview
+
+```mermaid
+erDiagram
+    USERS          ||--o{ UNITS            : "owns/rents"
+    UNITS          }o--|| BUILDINGS         : "belongs to"
+    BUILDINGS      }o--|| COMPLEXES         : "part of"
+    USERS          ||--o{ VISITOR_PASSES    : "creates"
+    VISITOR_PASSES ||--o| QR_CODES          : "has"
+    USERS          ||--o{ PAYMENTS          : "makes"
+    PAYMENTS       ||--o| RAZORPAY_TXN      : "linked to"
+    UNITS          ||--o{ PARKING_SLOTS     : "assigned"
+    USERS          ||--o{ VENDOR_REQUESTS   : "raises"
+    VENDOR_REQUESTS}o--|| VENDORS           : "fulfilled by"
+    USERS          ||--o{ EMERGENCY_ALERTS  : "triggers"
+    USERS          ||--o{ AUDIT_LOG         : "generates"
+```
+
+---
+
+### 1.2 Table Definitions
+
+#### Core / Identity
+
+| Table | Column | Type | Constraints | Notes |
+|---|---|---|---|---|
+| **complexes** | id | UUID | PK | Top-level entity |
+| | name | VARCHAR(120) | NOT NULL | |
+| | address | TEXT | | |
+| | created_at / updated_at | TIMESTAMPTZ | DEFAULT now() | |
+| **buildings** | id | UUID | PK | |
+| | complex_id | UUID | FK → complexes | |
+| | name | VARCHAR(60) | NOT NULL | e.g. "Block A" |
+| | total_floors | SMALLINT | | |
+| **units** | id | UUID | PK | |
+| | building_id | UUID | FK → buildings | |
+| | unit_number | VARCHAR(20) | NOT NULL | e.g. "A-301" |
+| | floor | SMALLINT | | |
+| | type | ENUM('1BHK','2BHK','3BHK','penthouse','studio') | | |
+| | status | ENUM('occupied','vacant','maintenance') | DEFAULT 'vacant' | |
+| **users** | id | UUID | PK | |
+| | email | VARCHAR(255) | UNIQUE, NOT NULL | Login credential |
+| | phone | VARCHAR(15) | UNIQUE | |
+| | password_hash | TEXT | NOT NULL | bcrypt |
+| | full_name | VARCHAR(120) | | |
+| | role | ENUM('super_admin','admin','resident','tenant','security','vendor') | NOT NULL | RBAC |
+| | avatar_url | TEXT | | |
+| | is_active | BOOLEAN | DEFAULT true | Soft disable |
+| | created_at / updated_at | TIMESTAMPTZ | | |
+| **user_units** | user_id | UUID | FK → users, PK | Many-to-many join |
+| | unit_id | UUID | FK → units, PK | |
+| | relation | ENUM('owner','tenant','family') | | |
+| | moved_in_at | DATE | | |
+| | moved_out_at | DATE | NULL | |
+
+#### Visitor & QR Module
+
+| Table | Column | Type | Constraints | Notes |
+|---|---|---|---|---|
+| **visitor_passes** | id | UUID | PK | |
+| | host_user_id | UUID | FK → users | Resident who invited |
+| | visitor_name | VARCHAR(120) | NOT NULL | |
+| | visitor_phone | VARCHAR(15) | | |
+| | purpose | ENUM('guest','delivery','cab','service','other') | | |
+| | valid_from | TIMESTAMPTZ | NOT NULL | |
+| | valid_until | TIMESTAMPTZ | NOT NULL | Expiry window |
+| | status | ENUM('pending','approved','checked_in','checked_out','expired','cancelled') | DEFAULT 'pending' | |
+| | checked_in_at | TIMESTAMPTZ | | |
+| | checked_out_at | TIMESTAMPTZ | | |
+| | approved_by | UUID | FK → users, NULL | Security/admin override |
+| **qr_codes** | id | UUID | PK | |
+| | visitor_pass_id | UUID | FK → visitor_passes, UNIQUE | 1:1 |
+| | token | VARCHAR(64) | UNIQUE, NOT NULL | HMAC-signed token |
+| | scanned_count | INT | DEFAULT 0 | Prevent replay |
+| | max_scans | SMALLINT | DEFAULT 1 | |
+| | expires_at | TIMESTAMPTZ | NOT NULL | Independent QR expiry |
+
+#### Payments Module
+
+| Table | Column | Type | Constraints | Notes |
+|---|---|---|---|---|
+| **invoices** | id | UUID | PK | |
+| | unit_id | UUID | FK → units | |
+| | type | ENUM('maintenance','rent','water','electricity','clubhouse','penalty','other') | | |
+| | amount | NUMERIC(12,2) | NOT NULL | |
+| | due_date | DATE | NOT NULL | |
+| | status | ENUM('draft','sent','paid','overdue','partially_paid','waived') | DEFAULT 'draft' | |
+| | created_by | UUID | FK → users | Admin who generated |
+| | period_start / period_end | DATE | | Billing period |
+| **payments** | id | UUID | PK | |
+| | invoice_id | UUID | FK → invoices | |
+| | user_id | UUID | FK → users | Who paid |
+| | amount | NUMERIC(12,2) | NOT NULL | Supports partial pay |
+| | method | ENUM('razorpay','cash','cheque','bank_transfer','wallet') | | |
+| | status | ENUM('initiated','authorized','captured','failed','refunded') | | Mirrors Razorpay states |
+| | paid_at | TIMESTAMPTZ | | |
+| **razorpay_txns** | id | UUID | PK | |
+| | payment_id | UUID | FK → payments | |
+| | rz_order_id | VARCHAR(40) | NOT NULL | Razorpay order ID |
+| | rz_payment_id | VARCHAR(40) | | Filled on capture |
+| | rz_signature | TEXT | | For verification |
+| | raw_webhook | JSONB | | Full webhook payload |
+| | event | VARCHAR(60) | | e.g. `payment.captured` |
+| | created_at | TIMESTAMPTZ | | |
+
+#### Parking Module
+
+| Table | Column | Type | Constraints | Notes |
+|---|---|---|---|---|
+| **parking_slots** | id | UUID | PK | |
+| | building_id | UUID | FK → buildings | |
+| | slot_number | VARCHAR(10) | NOT NULL | e.g. "B1-P12" |
+| | slot_type | ENUM('two_wheeler','four_wheeler','ev_charging','handicapped') | | |
+| | floor | VARCHAR(10) | | Basement level |
+| | status | ENUM('available','assigned','reserved','maintenance') | DEFAULT 'available' | |
+| **parking_assignments** | id | UUID | PK | |
+| | slot_id | UUID | FK → parking_slots | |
+| | unit_id | UUID | FK → units | |
+| | vehicle_number | VARCHAR(20) | | |
+| | vehicle_type | ENUM('car','bike','ev') | | |
+| | assigned_from | DATE | | |
+| | assigned_until | DATE | NULL | NULL = permanent |
+
+#### Vendor Services Module
+
+| Table | Column | Type | Constraints | Notes |
+|---|---|---|---|---|
+| **vendors** | id | UUID | PK | |
+| | name | VARCHAR(120) | NOT NULL | |
+| | category | ENUM('plumber','electrician','carpenter','cleaner','pest_control','painter','other') | | |
+| | phone | VARCHAR(15) | | |
+| | rating | NUMERIC(2,1) | DEFAULT 0.0 | Avg rating |
+| | is_verified | BOOLEAN | DEFAULT false | Admin-vetted |
+| **vendor_requests** | id | UUID | PK | |
+| | user_id | UUID | FK → users | Resident who raised |
+| | vendor_id | UUID | FK → vendors, NULL | Assigned later |
+| | unit_id | UUID | FK → units | |
+| | category | ENUM (same as vendors.category) | | Request category |
+| | description | TEXT | | |
+| | priority | ENUM('low','medium','high','critical') | DEFAULT 'medium' | |
+| | status | ENUM('open','assigned','in_progress','completed','cancelled','disputed') | DEFAULT 'open' | |
+| | scheduled_at | TIMESTAMPTZ | | |
+| | completed_at | TIMESTAMPTZ | | |
+| | rating | SMALLINT | CHECK 1-5 | Post-completion |
+| | review | TEXT | | |
+
+#### Emergency Module
+
+| Table | Column | Type | Constraints | Notes |
+|---|---|---|---|---|
+| **emergency_alerts** | id | UUID | PK | |
+| | user_id | UUID | FK → users | Who triggered |
+| | unit_id | UUID | FK → units | |
+| | type | ENUM('fire','medical','security','gas_leak','flood','earthquake','other') | | |
+| | severity | ENUM('low','medium','high','critical') | DEFAULT 'high' | |
+| | description | TEXT | | |
+| | status | ENUM('active','acknowledged','responding','resolved','false_alarm') | DEFAULT 'active' | |
+| | location_lat / location_lng | NUMERIC(9,6) | | GPS pin |
+| | acknowledged_by | UUID | FK → users, NULL | Security/admin |
+| | resolved_at | TIMESTAMPTZ | | |
+| | created_at | TIMESTAMPTZ | | |
+| **emergency_contacts** | id | UUID | PK | |
+| | complex_id | UUID | FK → complexes | |
+| | label | VARCHAR(60) | | e.g. "Fire Station" |
+| | phone | VARCHAR(15) | | |
+| | type | ENUM('police','fire','ambulance','security','custom') | | |
+
+#### System Tables
+
+| Table | Column | Type | Constraints | Notes |
+|---|---|---|---|---|
+| **audit_log** | id | BIGSERIAL | PK | Append-only |
+| | actor_id | UUID | FK → users | |
+| | action | VARCHAR(60) | | e.g. `payment.captured` |
+| | entity_type | VARCHAR(40) | | e.g. `invoice` |
+| | entity_id | UUID | | |
+| | metadata | JSONB | | Diff / context |
+| | ip_address | INET | | |
+| | created_at | TIMESTAMPTZ | DEFAULT now() | |
+| **notifications** | id | UUID | PK | |
+| | user_id | UUID | FK → users | |
+| | title | VARCHAR(200) | | |
+| | body | TEXT | | |
+| | channel | ENUM('in_app','push','sms','email') | | |
+| | is_read | BOOLEAN | DEFAULT false | |
+| | created_at | TIMESTAMPTZ | | |
+
+### 1.3 Key Indexes
+
+```sql
+-- Performance-critical indexes
+CREATE INDEX idx_users_email          ON users (email);
+CREATE INDEX idx_users_phone          ON users (phone);
+CREATE INDEX idx_user_units_user      ON user_units (user_id);
+CREATE INDEX idx_invoices_unit_status ON invoices (unit_id, status);
+CREATE INDEX idx_invoices_due_date    ON invoices (due_date) WHERE status IN ('sent','overdue');
+CREATE INDEX idx_payments_invoice     ON payments (invoice_id);
+CREATE INDEX idx_visitor_passes_host  ON visitor_passes (host_user_id, status);
+CREATE INDEX idx_qr_token             ON qr_codes (token);
+CREATE INDEX idx_emergency_active     ON emergency_alerts (status) WHERE status = 'active';
+CREATE INDEX idx_audit_entity         ON audit_log (entity_type, entity_id);
+CREATE INDEX idx_notifications_user   ON notifications (user_id, is_read);
+```
+
+---
+
+## 2. API Structure
+
+> **Base URL**: `/api/v1`  
+> **Auth**: Bearer JWT on all routes except `POST /auth/*`  
+> **Pagination**: `?page=1&limit=20` / cursor-based for feeds  
+> **Rate Limit**: 100 req/min per user; 10 req/min on auth endpoints
+
+### 2.1 Authentication
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| POST | `/auth/register` | Register resident/tenant (invite-only token) | Public |
+| POST | `/auth/login` | Email + password → JWT pair | Public |
+| POST | `/auth/refresh` | Refresh access token | Any |
+| POST | `/auth/forgot-password` | Send OTP / reset link | Public |
+| POST | `/auth/reset-password` | Set new password with token | Public |
+| GET | `/auth/me` | Current user profile | Any |
+| PATCH | `/auth/me` | Update profile | Any |
+| POST | `/auth/change-password` | Authenticated password change | Any |
+
+### 2.2 Users & Units (Admin)
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| GET | `/admin/users` | List all users (filter by role, building) | admin+ |
+| GET | `/admin/users/:id` | User detail | admin+ |
+| PATCH | `/admin/users/:id` | Update role / deactivate | admin+ |
+| POST | `/admin/units` | Create unit | admin+ |
+| GET | `/admin/units` | List units with occupancy | admin+ |
+| PATCH | `/admin/units/:id` | Update unit status | admin+ |
+| POST | `/admin/units/:id/assign` | Assign user to unit | admin+ |
+
+### 2.3 Visitor & QR System
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| POST | `/visitors` | Create visitor pass + auto-generate QR | resident+ |
+| GET | `/visitors` | List my visitor passes | resident+ |
+| GET | `/visitors/:id` | Pass detail + QR code data | resident+ |
+| PATCH | `/visitors/:id/cancel` | Cancel a pending pass | resident+ |
+| POST | `/visitors/verify-qr` | Security scans QR → validate + check-in | security+ |
+| PATCH | `/visitors/:id/checkout` | Mark visitor checked out | security+ |
+| GET | `/admin/visitors` | All visitor logs (filter by date, building) | admin+ |
+| POST | `/visitors/pre-approve` | Bulk pre-approve (e.g. party) | resident+ |
+
+### 2.4 Payments
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| GET | `/invoices` | My invoices (filter by status, type) | resident+ |
+| GET | `/invoices/:id` | Invoice detail | resident+ |
+| POST | `/admin/invoices` | Generate invoices (single / bulk) | admin+ |
+| POST | `/admin/invoices/bulk` | Auto-generate monthly maintenance | admin+ |
+| PATCH | `/admin/invoices/:id` | Waive / adjust amount | admin+ |
+| POST | `/payments/create-order` | Create Razorpay order for invoice | resident+ |
+| POST | `/payments/verify` | Verify Razorpay signature + capture | resident+ |
+| POST | `/payments/webhook` | Razorpay webhook receiver (no auth, HMAC) | Razorpay |
+| GET | `/payments` | My payment history | resident+ |
+| GET | `/admin/payments` | All payments + analytics | admin+ |
+| GET | `/admin/payments/report` | Exportable report (CSV/PDF) | admin+ |
+
+### 2.5 Parking
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| GET | `/parking/slots` | Available slots (filter by type, building) | resident+ |
+| GET | `/parking/my-slots` | My assigned slots | resident+ |
+| POST | `/admin/parking/slots` | Create / bulk-import slots | admin+ |
+| POST | `/admin/parking/assign` | Assign slot to unit | admin+ |
+| DELETE | `/admin/parking/assign/:id` | Release assignment | admin+ |
+| PATCH | `/admin/parking/slots/:id` | Change slot status | admin+ |
+
+### 2.6 Vendor Services
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| GET | `/vendors` | List verified vendors (filter by category) | resident+ |
+| POST | `/vendor-requests` | Raise a service request | resident+ |
+| GET | `/vendor-requests` | My requests | resident+ |
+| GET | `/vendor-requests/:id` | Request detail | resident+ |
+| PATCH | `/vendor-requests/:id/cancel` | Cancel open request | resident+ |
+| PATCH | `/vendor-requests/:id/rate` | Rate completed service | resident+ |
+| PATCH | `/admin/vendor-requests/:id/assign` | Assign vendor | admin+ |
+| PATCH | `/admin/vendor-requests/:id/status` | Update status | admin+ |
+| POST | `/admin/vendors` | Add vendor | admin+ |
+| PATCH | `/admin/vendors/:id` | Update / verify vendor | admin+ |
+
+### 2.7 Emergency System
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| POST | `/emergencies` | Trigger alert (SOS) | resident+ |
+| GET | `/emergencies` | My alerts | resident+ |
+| GET | `/admin/emergencies` | All active alerts | admin+/security |
+| PATCH | `/admin/emergencies/:id/acknowledge` | Acknowledge alert | security+ |
+| PATCH | `/admin/emergencies/:id/resolve` | Resolve alert | admin+ |
+| GET | `/emergencies/contacts` | Emergency contact list | Any |
+| POST | `/admin/emergencies/contacts` | Add emergency contact | admin+ |
+| POST | `/admin/emergencies/broadcast` | Broadcast to all residents | admin+ |
+
+### 2.8 Notifications & Audit
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| GET | `/notifications` | My notifications (paginated) | Any |
+| PATCH | `/notifications/:id/read` | Mark as read | Any |
+| PATCH | `/notifications/read-all` | Mark all read | Any |
+| GET | `/admin/audit-log` | Query audit trail | super_admin |
+
+---
+
+## 3. System Design
+
+### 3.1 High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph Client["Client Layer"]
+        WEB["React + Tailwind SPA"]
+        MOB["Mobile App (future)"]
+    end
+
+    subgraph Gateway["API Gateway / Reverse Proxy"]
+        NGINX["Nginx / Traefik"]
+        RL["Rate Limiter (redis)"]
+    end
+
+    subgraph App["Application Layer"]
+        API["Express API Server<br/>(Stateless, Horizontally Scalable)"]
+        WS["WebSocket Server<br/>(Socket.io / ws)"]
+        WORKER["Background Worker<br/>(BullMQ)"]
+    end
+
+    subgraph Data["Data Layer"]
+        PG["PostgreSQL<br/>(Primary)"]
+        PG_R["PostgreSQL<br/>(Read Replica)"]
+        REDIS["Redis<br/>(Cache + Sessions + Queues)"]
+        S3["Object Storage<br/>(S3 / MinIO)"]
+    end
+
+    subgraph External["External Services"]
+        RZ["Razorpay"]
+        SMS["SMS Gateway<br/>(Twilio / MSG91)"]
+        EMAIL["Email<br/>(SendGrid / SES)"]
+        PUSH["Push Notifications<br/>(FCM / APNs)"]
+    end
+
+    WEB & MOB --> NGINX
+    NGINX --> RL --> API
+    NGINX --> WS
+    API --> PG
+    API --> PG_R
+    API --> REDIS
+    API --> S3
+    API --> RZ
+    API --> WORKER
+    WORKER --> PG
+    WORKER --> SMS & EMAIL & PUSH
+    WS --> REDIS
+```
+
+### 3.2 Component Responsibilities
+
+| Component | Responsibility |
+|---|---|
+| **Nginx / Traefik** | TLS termination, load balancing, static file serving, WebSocket upgrade |
+| **Redis** | JWT blocklist, rate-limit counters, session store, BullMQ job queues, real-time pub/sub for WebSocket fan-out |
+| **Express API** | Stateless REST handlers, input validation (Zod/Joi), RBAC middleware, Razorpay SDK calls |
+| **WebSocket Server** | Real-time push for emergency broadcasts, visitor check-in notifications, payment confirmations |
+| **BullMQ Workers** | Invoice generation cron, overdue reminders, QR expiry cleanup, notification dispatch, report generation |
+| **PostgreSQL Primary** | All writes, transactional integrity |
+| **PostgreSQL Read Replica** | Dashboards, analytics, report queries |
+| **Object Storage** | QR code images, invoice PDFs, user avatars, vendor documents |
+
+### 3.3 Authentication & Authorization Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as API Server
+    participant R as Redis
+    participant DB as PostgreSQL
+
+    C->>A: POST /auth/login {email, password}
+    A->>DB: SELECT user WHERE email = ?
+    A->>A: bcrypt.compare(password, hash)
+    A->>A: Sign JWT (access 15m + refresh 7d)
+    A->>R: Store refresh token (key = user:id:refresh)
+    A-->>C: { accessToken, refreshToken }
+
+    Note over C,A: Subsequent requests
+    C->>A: GET /invoices (Authorization: Bearer <access>)
+    A->>A: Verify JWT signature + expiry
+    A->>R: Check blocklist (is token revoked?)
+    A->>A: RBAC check (role ∈ allowed roles)
+    A->>DB: Query data
+    A-->>C: 200 { data }
+```
+
+### 3.4 Payment Flow (Razorpay Integration)
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as API Server
+    participant RZ as Razorpay
+    participant DB as PostgreSQL
+    participant W as Worker
+
+    C->>A: POST /payments/create-order {invoiceId}
+    A->>DB: Validate invoice (status, amount, ownership)
+    A->>RZ: razorpay.orders.create({amount, currency})
+    RZ-->>A: {rz_order_id}
+    A->>DB: INSERT razorpay_txns (rz_order_id)
+    A->>DB: INSERT payments (status: initiated)
+    A-->>C: {rz_order_id, amount, key_id}
+
+    C->>RZ: Razorpay Checkout UI (client-side)
+    RZ-->>C: {rz_payment_id, rz_signature}
+
+    C->>A: POST /payments/verify {rz_order_id, rz_payment_id, rz_signature}
+    A->>A: HMAC-SHA256 verify signature
+    A->>DB: UPDATE payments SET status=captured
+    A->>DB: UPDATE invoice SET status=paid
+    A->>DB: UPDATE razorpay_txns (rz_payment_id, signature)
+    A-->>C: 200 { success }
+
+    Note over RZ,A: Async webhook (backup)
+    RZ->>A: POST /payments/webhook (payment.captured)
+    A->>A: Verify webhook signature
+    A->>DB: Idempotent upsert (skip if already captured)
+    A->>W: Enqueue receipt email + push notification
+```
+
+### 3.5 QR Visitor Flow
+
+```mermaid
+sequenceDiagram
+    participant R as Resident
+    participant A as API Server
+    participant DB as PostgreSQL
+    participant S as Security Guard
+
+    R->>A: POST /visitors {name, phone, validFrom, validUntil}
+    A->>DB: INSERT visitor_pass
+    A->>A: Generate HMAC token (passId + secret + expiry)
+    A->>DB: INSERT qr_codes (token, expires_at)
+    A-->>R: {pass, qrCodeUrl}
+
+    R->>R: Share QR via WhatsApp/SMS
+
+    S->>A: POST /visitors/verify-qr {token}
+    A->>DB: SELECT qr_code WHERE token = ?
+    A->>A: Check: expired? scanned_count < max_scans? pass status?
+    alt Valid
+        A->>DB: UPDATE scanned_count++, pass status=checked_in
+        A->>A: Push notification to host resident (WebSocket)
+        A-->>S: 200 {visitor details, unit, host}
+    else Invalid
+        A-->>S: 403 {reason: "expired" | "already_used" | "cancelled"}
+    end
+```
+
+### 3.6 Emergency Broadcast Flow
+
+```mermaid
+sequenceDiagram
+    participant R as Resident
+    participant A as API Server
+    participant DB as PostgreSQL
+    participant WS as WebSocket
+    participant W as Worker
+
+    R->>A: POST /emergencies {type: "fire", severity: "critical"}
+    A->>DB: INSERT emergency_alert
+    A->>WS: Broadcast to building channel (real-time)
+    A->>W: Enqueue SMS + Push to all building residents
+    A->>W: Enqueue notification to security + admin
+    A-->>R: 201 {alertId}
+
+    Note over A,W: Worker processes
+    W->>W: Send SMS via Twilio
+    W->>W: Send Push via FCM
+    W->>DB: INSERT notifications (in_app)
+```
+
+### 3.7 Folder Structure
+
+```
+smart-apartment/
+├── client/                         # React + Tailwind
+│   ├── public/
+│   ├── src/
+│   │   ├── api/                    # Axios instances, interceptors
+│   │   ├── components/             # Shared UI components
+│   │   ├── features/
+│   │   │   ├── auth/
+│   │   │   ├── visitors/
+│   │   │   ├── payments/
+│   │   │   ├── parking/
+│   │   │   ├── vendors/
+│   │   │   └── emergency/
+│   │   ├── hooks/
+│   │   ├── layouts/
+│   │   ├── pages/
+│   │   ├── store/                  # Zustand / Redux Toolkit
+│   │   ├── utils/
+│   │   └── App.jsx
+│   └── tailwind.config.js
+│
+├── server/
+│   ├── src/
+│   │   ├── config/                 # env, db, redis, razorpay
+│   │   ├── middleware/             # auth, rbac, rateLimiter, errorHandler
+│   │   ├── modules/
+│   │   │   ├── auth/
+│   │   │   │   ├── auth.controller.js
+│   │   │   │   ├── auth.service.js
+│   │   │   │   ├── auth.routes.js
+│   │   │   │   └── auth.validation.js
+│   │   │   ├── visitors/
+│   │   │   ├── payments/
+│   │   │   ├── parking/
+│   │   │   ├── vendors/
+│   │   │   ├── emergency/
+│   │   │   └── notifications/
+│   │   ├── jobs/                   # BullMQ job processors
+│   │   ├── utils/                  # helpers, qr, hmac, pdf
+│   │   ├── websocket/              # Socket.io setup
+│   │   └── app.js
+│   ├── migrations/                 # SQL migration files
+│   ├── seeds/                      # Test data
+│   └── tests/
+│
+├── docker-compose.yml
+├── nginx.conf
+└── .env.example
+```
+
+---
+
+## 4. Edge Cases & Production Concerns
+
+### 4.1 Authentication
+
+| Edge Case | Mitigation |
+|---|---|
+| Brute-force login | Rate limit 10 req/min on `/auth/login`; progressive delay; account lockout after 5 failures (unlock via email) |
+| JWT stolen | Short-lived access tokens (15 min); refresh token rotation; Redis blocklist on logout; bind refresh token to device fingerprint |
+| Concurrent sessions | Track active sessions per user; allow configurable max (e.g. 3); force logout oldest on overflow |
+| Role escalation | Server-side RBAC middleware on every route; never trust client-supplied role; validate role transitions (admin can't self-promote to super_admin) |
+
+### 4.2 Visitor & QR
+
+| Edge Case | Mitigation |
+|---|---|
+| QR screenshot replay | `max_scans` limit (default 1); HMAC token includes expiry, validated server-side; `scanned_count` prevents re-use |
+| Pass valid window crossed | Cron job marks expired passes; verify-qr checks `valid_until` AND `qr.expires_at` |
+| Visitor never checks out | Auto-checkout cron after 12 hours; security dashboard highlights stale check-ins |
+| Resident creates passes after moving out | `user_units.moved_out_at` check; deactivated users blocked via `is_active` flag |
+
+### 4.3 Payments
+
+| Edge Case | Mitigation |
+|---|---|
+| Double payment | Idempotency key on `create-order`; unique constraint `(invoice_id, rz_order_id)`; webhook handler checks existing captured status before updating |
+| Partial payment | `payments.amount` can be less than `invoices.amount`; invoice tracks total paid; status becomes `partially_paid` |
+| Webhook arrives before client verify | Both paths are idempotent; whichever arrives first captures, second is a no-op |
+| Razorpay downtime | Queue failed orders for retry (BullMQ); show "pending" UI; manual cash/cheque fallback with admin approval |
+| Refund race condition | Refund only from `captured` status; database transaction with `SELECT FOR UPDATE` on payment row |
+| Invoice generated for vacant unit | Validate `unit.status = 'occupied'` before invoice generation; skip vacant units in bulk generation |
+
+### 4.4 Parking
+
+| Edge Case | Mitigation |
+|---|---|
+| Double assignment | Unique constraint on `(slot_id)` in active assignments (where `assigned_until IS NULL OR assigned_until > now()`) |
+| Slot type mismatch | Validate `vehicle_type` against `slot_type` (bike → two_wheeler only) |
+| Resident moves out but keeps slot | Trigger slot release on `user_units.moved_out_at` update; cron audit |
+
+### 4.5 Vendor Services
+
+| Edge Case | Mitigation |
+|---|---|
+| Vendor no-show | Auto-escalate if status stays `assigned` > 24h; notify admin |
+| Disputed service | `disputed` status triggers admin review; freeze vendor rating updates until resolved |
+| Concurrent requests for same vendor | Queue-based assignment; vendor capacity tracking (max concurrent jobs) |
+| Rating manipulation | One rating per completed request; rate only after `status = 'completed'` |
+
+### 4.6 Emergency System
+
+| Edge Case | Mitigation |
+|---|---|
+| False alarm spam | Rate limit: 1 emergency per user per 5 min; repeated false alarms → admin review flag |
+| No security online | Escalation ladder: security (0 min) → admin (2 min) → emergency contacts (5 min) via SMS if unacknowledged |
+| Mass panic (100+ simultaneous alerts) | Deduplicate by type + building within 5-min window; merge into single broadcast; queue SMS to prevent provider throttle |
+| Network down during emergency | Client caches SOS locally; retries with exponential backoff; offline-first emergency contact display |
+
+### 4.7 System-Wide
+
+| Concern | Strategy |
+|---|---|
+| **Data consistency** | Database transactions (`BEGIN...COMMIT`) for multi-table writes; `SELECT FOR UPDATE` for contested resources |
+| **Soft deletes** | `is_active` / `deleted_at` on user-facing entities; hard delete only in audit-log archival |
+| **Multi-tenancy** | `complex_id` scoping on all queries; RLS (Row-Level Security) in PostgreSQL for defense-in-depth |
+| **Horizontal scaling** | Stateless API servers behind load balancer; Redis for shared state; sticky sessions only for WebSocket |
+| **Observability** | Structured JSON logging (Winston/Pino); request-id propagation; Prometheus metrics; health-check endpoint `/health` |
+| **DB migrations** | Versioned migrations via `node-pg-migrate` or Knex; zero-downtime deploys with backward-compatible schema changes |
+| **Secrets management** | Environment variables via `.env` (dev) / Vault / AWS SSM (prod); never commit secrets |
+| **CORS & CSP** | Strict CORS whitelist; Content-Security-Policy headers; Helmet.js middleware |
+| **File uploads** | Size limits (5 MB avatar, 10 MB docs); virus scan via ClamAV; signed URLs for private access |
+| **Backup & DR** | Daily automated PG backups (pg_dump); point-in-time recovery; cross-region replica for DR |
+
+---
+
+> **Architect** — This schema supports thousands of units with sub-second query response times when combined with the indexed strategy above. The modular Express structure allows each module to be extracted into a microservice later if traffic demands it.

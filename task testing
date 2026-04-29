@@ -1,0 +1,24 @@
+# QA Testing Tasks
+
+- [x] Step 1: Start System (Backend & Frontend)
+- [x] Step 2: Auth Testing (Register, Login, JWT, Redirects, Refresh, Logout)
+- [x] Step 3: Create Test Users (Roles: Admin, Resident, Security, Vendor)
+- [x] Step 4: Resident Flow (Dashboard, Visitor Pass, Service Request, Avatar, Invoices)
+- [x] Step 5: Security Flow (View Visitors, Check-in, Check-out)
+- [x] Step 6: Vendor Flow (View Service Requests, Update Status)
+- [/] Step 7: Admin Flow (Dashboard Stats, Charts, Invoices, Roles, Users)
+- [ ] Step 8: Payment Flow (Create Invoice, Pay, Webhook)
+- [ ] Step 9: File Upload Test (PUT /api/v1/auth/me/avatar)
+- [ ] Step 10: Notifications (Socket Events)
+- [ ] Step 11: API Testing (/api/docs and endpoints)
+- [ ] Step 12: Error Testing (Edge cases)
+- [ ] Step 13: Final Validation & Report Generation
+
+## Bugs to Fix
+- [x] Fix MainLayout crash for new residents after login
+- [x] Improve phone number validation UI on registration
+- [x] Fix vendor-requests missing unit_id payload
+- [x] Fix vendor-requests category capitalization mismatch
+- [x] Fix Admin sub-routes redirecting to resident dashboard
+- [x] Fix 429 Too Many Requests (Rate Limiter) on Admin Dashboard
+

@@ -1,0 +1,65 @@
+name: Smart Apartment Platform CI/CD
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Setup Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        cache-dependency-path: './package-lock.json'
+
+    - name: Install Backend Dependencies
+      run: npm ci
+
+    - name: Run Backend Tests
+      run: npm test --if-present
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./client
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Setup Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20.x
+        cache: 'npm'
+        cache-dependency-path: './client/package-lock.json'
+
+    - name: Install Frontend Dependencies
+      run: npm install
+
+    - name: Build Frontend React App
+      run: npm run build
+
+  deploy-backend:
+    needs: backend-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+    - name: Trigger Render / Railway Deploy
+      run: |
+        if [ -n "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+          curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
+        else
+          echo "No deployment hook configured in Github Secrets."
+        fi

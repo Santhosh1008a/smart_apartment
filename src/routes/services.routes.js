@@ -1,0 +1,31 @@
+const express = require('express');
+const router = express.Router();
+const servicesController = require('../controllers/services.controller');
+const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
+const { resolveTenant } = require('../middlewares/tenant.middleware');
+const { validate, validateQuery } = require('../middlewares/validate.middleware');
+const {
+  triggerEmergencySchema,
+  assignParkingSchema,
+  raiseVendorRequestSchema,
+  listVendorsQuerySchema,
+} = require('../validators/services.validator');
+
+router.use(requireAuth);
+router.use(resolveTenant);
+
+// Emergency
+router.post('/emergencies', validate(triggerEmergencySchema), servicesController.triggerEmergency);
+router.get('/emergencies', requireRole(['admin', 'security', 'super_admin']), servicesController.listEmergencies);
+
+// Parking
+router.get('/parking/slots', servicesController.listAvailableSlots);
+router.get('/parking/my-assignments', servicesController.listMyParkingAssignments);
+router.post('/admin/parking/assign', requireRole(['admin', 'super_admin']), validate(assignParkingSchema), servicesController.assignParking);
+
+// Vendors
+router.get('/vendors', validateQuery(listVendorsQuerySchema), servicesController.listVendors);
+router.get('/vendor-requests', servicesController.listMyVendorRequests);
+router.post('/vendor-requests', validate(raiseVendorRequestSchema), servicesController.raiseVendorRequest);
+
+module.exports = router;
