@@ -16,7 +16,7 @@ DO $$ BEGIN
     CREATE TYPE payment_method_enum AS ENUM ('razorpay', 'cash', 'cheque', 'bank_transfer', 'wallet');
     CREATE TYPE payment_status_enum AS ENUM ('initiated', 'authorized', 'captured', 'failed', 'refunded');
     CREATE TYPE slot_type_enum AS ENUM ('two_wheeler', 'four_wheeler', 'ev_charging', 'handicapped');
-    CREATE TYPE slot_status_enum AS ENUM ('available', 'assigned', 'reserved', 'maintenance');
+    CREATE TYPE slot_status_enum AS ENUM ('available', 'assigned', 'reserved', 'maintenance', 'occupied', 'inactive');
     CREATE TYPE parking_vehicle_type_enum AS ENUM ('car', 'bike', 'ev');
     CREATE TYPE vendor_category_enum AS ENUM ('plumber', 'electrician', 'carpenter', 'cleaner', 'pest_control', 'painter', 'other');
     CREATE TYPE vendor_req_priority_enum AS ENUM ('low', 'medium', 'high', 'critical');
@@ -134,21 +134,85 @@ CREATE TABLE IF NOT EXISTS razorpay_txns (
 
 CREATE TABLE IF NOT EXISTS parking_slots (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    complex_id UUID REFERENCES complexes(id) ON DELETE CASCADE,
     building_id UUID REFERENCES buildings(id),
+    display_name VARCHAR(120),
+    parking_area VARCHAR(80),
+    slot_label VARCHAR(40),
     slot_number VARCHAR(10) NOT NULL,
+    parking_type VARCHAR(20) DEFAULT 'car',
+    slot_kind VARCHAR(30) DEFAULT 'resident',
     slot_type slot_type_enum,
     floor VARCHAR(10),
-    status slot_status_enum DEFAULT 'available'
+    status slot_status_enum DEFAULT 'available',
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS parking_vehicles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    complex_id UUID NOT NULL REFERENCES complexes(id) ON DELETE CASCADE,
+    unit_id UUID NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+    resident_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vehicle_number VARCHAR(20) NOT NULL,
+    vehicle_type VARCHAR(20) NOT NULL DEFAULT 'car',
+    make_model VARCHAR(80),
+    color VARCHAR(40),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (complex_id, vehicle_number)
 );
 
 CREATE TABLE IF NOT EXISTS parking_assignments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    complex_id UUID REFERENCES complexes(id) ON DELETE CASCADE,
     slot_id UUID REFERENCES parking_slots(id),
     unit_id UUID REFERENCES units(id),
+    vehicle_id UUID REFERENCES parking_vehicles(id) ON DELETE SET NULL,
     vehicle_number VARCHAR(20),
     vehicle_type parking_vehicle_type_enum,
     assigned_from DATE,
-    assigned_until DATE
+    assigned_until DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    assigned_by UUID REFERENCES users(id),
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS parking_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    complex_id UUID NOT NULL REFERENCES complexes(id) ON DELETE CASCADE,
+    unit_id UUID NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+    resident_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vehicle_id UUID REFERENCES parking_vehicles(id) ON DELETE SET NULL,
+    request_type VARCHAR(30) NOT NULL DEFAULT 'extra_parking',
+    reason TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    reviewed_by UUID REFERENCES users(id),
+    reviewed_at TIMESTAMPTZ,
+    admin_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS visitor_parking_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    complex_id UUID NOT NULL REFERENCES complexes(id) ON DELETE CASCADE,
+    slot_id UUID REFERENCES parking_slots(id) ON DELETE SET NULL,
+    visitor_pass_id UUID REFERENCES visitor_passes(id) ON DELETE SET NULL,
+    visitor_name VARCHAR(120) NOT NULL,
+    visitor_phone VARCHAR(20),
+    vehicle_number VARCHAR(20) NOT NULL,
+    host_unit_id UUID REFERENCES units(id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    checked_in_by UUID REFERENCES users(id),
+    released_by UUID REFERENCES users(id),
+    checked_in_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    released_at TIMESTAMPTZ,
+    notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS vendors (

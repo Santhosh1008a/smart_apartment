@@ -138,6 +138,7 @@ const serviceRoutes = require('./routes/services.routes');
 const securityRoutes = require('./routes/security.routes');
 const vendorRoutes = require('./routes/vendor.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const parkingRoutes = require('./routes/parking.routes');
 
 // Mount Routes
 app.use('/api/v1/auth', authRoutes);
@@ -150,6 +151,7 @@ app.use('/api/v1/services', serviceRoutes);
 app.use('/api/v1/security', securityRoutes);
 app.use('/api/v1/vendor', vendorRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/parking', parkingRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

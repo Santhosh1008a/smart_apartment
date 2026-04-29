@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const servicesController = require('../controllers/services.controller');
 const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
-const { resolveTenant } = require('../middlewares/tenant.middleware');
+const { resolveTenant, requireTenant } = require('../middlewares/tenant.middleware');
 const { validate, validateQuery } = require('../middlewares/validate.middleware');
 const {
   triggerEmergencySchema,
@@ -20,9 +20,9 @@ router.get('/emergencies', requireRole(['admin', 'security', 'super_admin', 'res
 router.patch('/emergencies/:id', requireRole(['admin', 'security', 'super_admin', 'resident']), servicesController.resolveEmergency);
 
 // Parking
-router.get('/parking/slots', servicesController.listAvailableSlots);
-router.get('/parking/my-assignments', servicesController.listMyParkingAssignments);
-router.post('/admin/parking/assign', requireRole(['admin', 'super_admin']), validate(assignParkingSchema), servicesController.assignParking);
+router.get('/parking/slots', requireTenant, servicesController.listAvailableSlots);
+router.get('/parking/my-assignments', requireTenant, servicesController.listMyParkingAssignments);
+router.post('/admin/parking/assign', requireRole(['admin', 'super_admin']), requireTenant, validate(assignParkingSchema), servicesController.assignParking);
 
 // Vendors
 router.get('/vendors', validateQuery(listVendorsQuerySchema), servicesController.listVendors);

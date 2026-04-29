@@ -22,6 +22,7 @@ import AdminUsers from "./pages/admin/AdminUsers"
 import AdminBuildings from "./pages/admin/AdminBuildings"
 import AdminUnits from "./pages/admin/AdminUnits"
 import AdminVendorRequests from "./pages/admin/AdminVendorRequests"
+import AdminParking from "./pages/admin/AdminParking"
 
 import SecurityLayout from "./layouts/SecurityLayout"
 import SecurityDashboard from "./pages/security/SecurityDashboard"
@@ -125,6 +126,7 @@ function App() {
           <Route path="invoices" element={<AdminInvoices />} />
           <Route path="buildings" element={<AdminBuildings />} />
           <Route path="units" element={<AdminUnits />} />
+          <Route path="parking" element={<AdminParking />} />
           <Route path="vendor-requests" element={<AdminVendorRequests />} />
           <Route path="profile" element={<ProfileSettings />} />
         </Route>

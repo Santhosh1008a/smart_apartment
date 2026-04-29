@@ -164,22 +164,39 @@ exports.assignParking = async (req, res, next) => {
   const client = await getClient();
   try {
     const { slot_id, unit_id, vehicle_number, vehicle_type } = req.body;
+    const { complexId } = req;
+
+    const scopeCheck = await query(
+      `SELECT ps.id AS slot_id, ps.status, un.id AS unit_id
+       FROM parking_slots ps
+       JOIN units un ON un.id = $2
+       JOIN buildings b ON un.building_id = b.id
+       WHERE ps.id = $1
+         AND ps.complex_id = $3
+         AND b.complex_id = $3`,
+      [slot_id, unit_id, complexId]
+    );
+
+    if (scopeCheck.rows.length === 0) {
+      return next(new AppError('Parking slot and unit must belong to your society', 404));
+    }
 
     await client.query('BEGIN');
     
     // Check if available
-    const slotCheck = await client.query('SELECT status FROM parking_slots WHERE id = $1', [slot_id]);
+    const slotCheck = await client.query('SELECT status FROM parking_slots WHERE id = $1 AND complex_id = $2 FOR UPDATE', [slot_id, complexId]);
     if (slotCheck.rows.length === 0 || slotCheck.rows[0].status !== 'available') {
+      await client.query('ROLLBACK');
       return next(new AppError('Slot is not available', 400));
     }
 
     const { rows } = await client.query(
-      `INSERT INTO parking_assignments (slot_id, unit_id, vehicle_number, vehicle_type, assigned_from)
-       VALUES ($1, $2, $3, $4, now()) RETURNING *`,
-      [slot_id, unit_id, vehicle_number, vehicle_type]
+      `INSERT INTO parking_assignments (complex_id, slot_id, unit_id, vehicle_number, vehicle_type, assigned_from, assigned_by, status)
+       VALUES ($1, $2, $3, $4, $5, now(), $6, 'active') RETURNING *`,
+      [complexId, slot_id, unit_id, vehicle_number, vehicle_type, req.user.id]
     );
 
-    await client.query(`UPDATE parking_slots SET status = 'assigned' WHERE id = $1`, [slot_id]);
+    await client.query(`UPDATE parking_slots SET status = 'occupied' WHERE id = $1 AND complex_id = $2`, [slot_id, complexId]);
 
     await client.query('COMMIT');
 
@@ -194,14 +211,16 @@ exports.assignParking = async (req, res, next) => {
 
 exports.listMyParkingAssignments = async (req, res, next) => {
   try {
+    const { complexId } = req;
     const { rows } = await query(
-      `SELECT pa.*, s.slot_number, s.floor, b.name as building_name 
+      `SELECT pa.*, s.slot_number, s.display_name, s.parking_area, s.floor, b.name as building_name 
        FROM parking_assignments pa
        JOIN parking_slots s ON pa.slot_id = s.id
-       JOIN buildings b ON s.building_id = b.id
+       LEFT JOIN buildings b ON s.building_id = b.id
        WHERE pa.unit_id IN (SELECT unit_id FROM user_units WHERE user_id = $1)
-       AND pa.assigned_until IS NULL`,
-      [req.user.id]
+       AND pa.assigned_until IS NULL
+       AND pa.complex_id = $2`,
+      [req.user.id, complexId]
     );
     res.status(200).json({ success: true, data: rows });
   } catch (err) {
@@ -333,4 +352,3 @@ exports.listAllVendorRequests = async (req, res, next) => {
     next(err);
   }
 };
-
