@@ -103,12 +103,12 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Super Admin Dashboard</h2>
           <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">Platform-wide overview of all societies.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => { setShowComplexForm(!showComplexForm); setShowAdminForm(false) }}
             className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"

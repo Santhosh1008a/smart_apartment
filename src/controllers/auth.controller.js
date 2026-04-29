@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const Joi = require('joi');
 const { query } = require('../config/db');
 const supabase = require('../config/supabase');
 const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt');
@@ -128,6 +129,7 @@ exports.getMe = async (req, res, next) => {
     const { rows } = await query(
       `SELECT
         u.id, u.email, u.phone, u.full_name, u.role, u.avatar_url, u.complex_id, u.created_at,
+        u.emergency_contact,
         c.id AS ctx_complex_id, c.name AS complex_name,
         b.id AS building_id, b.name AS building_name,
         un.id AS unit_id, un.unit_number,
@@ -157,6 +159,7 @@ exports.getMe = async (req, res, next) => {
       avatar_url: row.avatar_url,
       complex_id: row.complex_id,
       complex_name: row.complex_name || null,
+      emergency_contact: row.emergency_contact || null,
       created_at: row.created_at,
       // Backward-compat flat fields
       unit: row.unit_number || null,
@@ -176,12 +179,54 @@ exports.getMe = async (req, res, next) => {
       ? { id: row.unit_id, unit_number: row.unit_number }
       : null;
 
+    // Role-specific extra context
+    let roleContext = null;
+
+    if (row.role === 'vendor') {
+      // Fetch vendor category and assigned society
+      const vendorRes = await query(
+        `SELECT vr.category, COUNT(vr.id) AS total_jobs
+         FROM vendor_requests vr
+         WHERE vr.assigned_vendor_id = $1
+         GROUP BY vr.category
+         LIMIT 1`,
+        [row.id]
+      );
+      roleContext = {
+        category: vendorRes.rows[0]?.category || null,
+        total_jobs: parseInt(vendorRes.rows[0]?.total_jobs || 0),
+      };
+    }
+
+    if (row.role === 'security') {
+      roleContext = {
+        duty: 'Security Guard',
+        shift: 'General',
+      };
+    }
+
+    // Parking slot for residents
+    let parking = null;
+    if (row.role === 'resident' && row.unit_id) {
+      const parkingRes = await query(
+        `SELECT ps.slot_number, ps.type
+         FROM parking_assignments pa
+         JOIN parking_slots ps ON pa.slot_id = ps.id
+         WHERE pa.unit_id = $1 AND (pa.assigned_until IS NULL OR pa.assigned_until > now())
+         LIMIT 1`,
+        [row.unit_id]
+      );
+      parking = parkingRes.rows[0] || null;
+    }
+
     res.status(200).json({
       success: true,
       data: userPayload,
       complex,
       building,
       unit,
+      parking,
+      roleContext,
     });
   } catch (err) {
     next(err);
@@ -260,6 +305,74 @@ exports.listComplexes = async (req, res, next) => {
   try {
     const { rows } = await query('SELECT id, name FROM complexes ORDER BY name ASC');
     res.status(200).json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const { full_name, phone, emergency_contact } = req.body;
+    const { id } = req.user;
+
+    if (!full_name && !phone && emergency_contact === undefined) {
+      return next(new AppError('No fields to update', 400));
+    }
+
+    // Build dynamic update query
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (full_name) { fields.push(`full_name = $${idx++}`); values.push(full_name.trim()); }
+    if (phone) { fields.push(`phone = $${idx++}`); values.push(phone.trim()); }
+    if (emergency_contact !== undefined) { fields.push(`emergency_contact = $${idx++}`); values.push(emergency_contact?.trim() || null); }
+
+    fields.push(`updated_at = now()`);
+    values.push(id);
+
+    const { rows } = await query(
+      `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, email, full_name, phone, emergency_contact, role, avatar_url`,
+      values
+    );
+
+    if (rows.length === 0) return next(new AppError('User not found', 404));
+
+    res.status(200).json({ success: true, data: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') {
+      return next(new AppError('Phone number already in use', 400));
+    }
+    next(err);
+  }
+};
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { current_password, new_password } = req.body;
+    const { id } = req.user;
+
+    if (!current_password || !new_password) {
+      return next(new AppError('current_password and new_password are required', 400));
+    }
+
+    if (new_password.length < 6) {
+      return next(new AppError('New password must be at least 6 characters', 400));
+    }
+
+    // Fetch current password hash
+    const { rows } = await query('SELECT password_hash FROM users WHERE id = $1', [id]);
+    if (rows.length === 0) return next(new AppError('User not found', 404));
+
+    const isMatch = await bcrypt.compare(current_password, rows[0].password_hash);
+    if (!isMatch) return next(new AppError('Current password is incorrect', 401));
+
+    const salt = await bcrypt.genSalt(10);
+    const newHash = await bcrypt.hash(new_password, salt);
+
+    await query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [newHash, id]);
+
+    res.status(200).json({ success: true, message: 'Password changed successfully' });
   } catch (err) {
     next(err);
   }

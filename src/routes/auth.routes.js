@@ -100,7 +100,11 @@ router.post('/refresh', validate(refreshSchema), authController.refresh);
  */
 router.get('/me', requireAuth, authController.getMe);
 
-// File Upload
+// Profile & Password Update
+router.put('/me/profile', requireAuth, authController.updateProfile);
+router.put('/me/password', requireAuth, authController.changePassword);
+
+// Avatar Upload
 router.put('/me/avatar', requireAuth, upload.single('avatar'), authController.updateAvatar);
 
 module.exports = router;

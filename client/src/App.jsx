@@ -32,6 +32,8 @@ import VendorDashboard from "./pages/vendor/VendorDashboard"
 import SuperAdminLayout from "./layouts/SuperAdminLayout"
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard"
 
+import ProfileSettings from "./pages/profile/ProfileSettings"
+
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -76,7 +78,7 @@ function App() {
       getMe().then((res) => {
         if (res.success) {
           setUser(res.data)
-          setContext(res.complex || null, res.building || null, res.unit || null)
+          setContext(res.complex || null, res.building || null, res.unit || null, res.parking || null, res.roleContext || null)
         }
       }).catch(() => {})
     }
@@ -106,6 +108,7 @@ function App() {
           <Route path="vendors" element={<Vendors />} />
           <Route path="parking" element={<Parking />} />
           <Route path="emergency" element={<Emergency />} />
+          <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
         {/* Admin Routes */}
@@ -123,6 +126,7 @@ function App() {
           <Route path="buildings" element={<AdminBuildings />} />
           <Route path="units" element={<AdminUnits />} />
           <Route path="vendor-requests" element={<AdminVendorRequests />} />
+          <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
         {/* Security Routes */}
@@ -135,6 +139,7 @@ function App() {
           }
         >
           <Route index element={<SecurityDashboard />} />
+          <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
         <Route
@@ -146,6 +151,7 @@ function App() {
           }
         >
           <Route index element={<VendorDashboard />} />
+          <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
         {/* Super Admin Routes */}
@@ -158,6 +164,7 @@ function App() {
           }
         >
           <Route index element={<SuperAdminDashboard />} />
+          <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
         {/* Fallback */}

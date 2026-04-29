@@ -1,42 +1,24 @@
 import { useState } from "react"
-import { Outlet, NavLink, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, useNavigate, Link, useLocation } from "react-router-dom"
 import { useAuthStore } from "../store/useAuthStore"
-import {
-  Building2,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-} from "lucide-react"
+import { Building2, LayoutDashboard, LogOut, Menu, Settings, X } from "lucide-react"
 import { cn } from "../utils/cn"
+import NotificationBell from "../components/layout/NotificationBell"
 
 export default function SuperAdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
-
-  const handleLogout = () => {
-    logout()
-    navigate("/login")
-  }
-
-  const navigation = [
-    { name: "Dashboard", href: "/super-admin", icon: LayoutDashboard },
-  ]
+  const location = useLocation()
+  const handleLogout = () => { logout(); navigate("/login") }
+  const navigation = [{ name: "Dashboard", href: "/super-admin", icon: LayoutDashboard }]
+  const pageTitle = location.pathname === "/super-admin/profile" ? "Profile & Settings" : "Super Admin Control Center"
 
   return (
     <div className="flex bg-background min-h-screen font-sans">
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden backdrop-blur-sm transition-opacity"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-
-      <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-auto flex flex-col shadow-xl lg:shadow-none",
-        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <div className="flex items-center justify-center h-16 border-b border-border px-4">
+      {isSidebarOpen && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)} />}
+      <div className={cn("fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-auto flex flex-col shadow-xl lg:shadow-none", isSidebarOpen ? "translate-x-0" : "-translate-x-full")}>
+        <div className="flex items-center justify-between h-16 border-b border-border px-4 shrink-0">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md shadow-blue-500/20">
               <Building2 className="w-5 h-5 text-white" />
@@ -46,67 +28,44 @@ export default function SuperAdminLayout() {
               <span className="ml-1.5 text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">Super</span>
             </div>
           </div>
+          <button className="lg:hidden text-gray-400 hover:text-foreground p-1" onClick={() => setIsSidebarOpen(false)}><X className="w-5 h-5" /></button>
         </div>
-
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1 custom-scrollbar">
           {navigation.map((item) => (
-            <NavLink
-              key={item.href}
-              to={item.href}
-              end={item.href === "/super-admin"}
-              onClick={() => setIsSidebarOpen(false)}
-              className={({ isActive }) => cn(
-                "group flex items-center px-3 py-2.5 text-sm font-medium rounded-md transition-all duration-200",
-                isActive
-                  ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
-                  : "text-gray-600 hover:bg-secondary hover:text-foreground dark:text-gray-400 dark:hover:bg-secondary"
-              )}
-            >
-              <item.icon className={cn("mr-3 h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110")} />
+            <NavLink key={item.href} to={item.href} end={item.href === "/super-admin"} onClick={() => setIsSidebarOpen(false)}
+              className={({ isActive }) => cn("group flex items-center px-3 py-2.5 text-sm font-medium rounded-md transition-all duration-200", isActive ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "text-gray-600 hover:bg-secondary hover:text-foreground dark:text-gray-400 dark:hover:bg-secondary")}>
+              <item.icon className="mr-3 h-5 w-5 flex-shrink-0 transition-transform group-hover:scale-110" />
               {item.name}
             </NavLink>
           ))}
         </nav>
-
         <div className="p-4 border-t border-border mt-auto">
-          <div className="flex items-center mb-4 px-2">
-            <img
-              src={user?.avatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=super"}
-              alt="Avatar"
-              className="w-10 h-10 rounded-full border border-border shadow-sm"
-            />
-            <div className="ml-3 truncate">
-              <p className="text-sm font-medium text-foreground truncate">{user?.full_name}</p>
+          <Link to="/super-admin/profile" onClick={() => setIsSidebarOpen(false)} className="flex items-center mb-3 px-2 py-2 rounded-lg hover:bg-secondary transition-colors group">
+            <img src={user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id || "super"}`} alt="Avatar" className="w-10 h-10 rounded-full border border-border shadow-sm flex-shrink-0" />
+            <div className="ml-3 truncate flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground truncate group-hover:text-indigo-600 transition-colors">{user?.full_name}</p>
               <p className="text-xs text-indigo-600 dark:text-indigo-400 truncate capitalize font-medium">Super Admin</p>
             </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors dark:text-red-400 dark:hover:bg-red-950/30"
-          >
-            <LogOut className="mr-3 h-5 w-5" />
-            Logout
+            <Settings className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1 group-hover:text-indigo-600 transition-colors" />
+          </Link>
+          <button onClick={handleLogout} className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors dark:text-red-400 dark:hover:bg-red-950/30">
+            <LogOut className="mr-3 h-5 w-5" />Logout
           </button>
         </div>
       </div>
-
-      <div className="flex flex-col flex-1 w-0 relative">
+      <div className="flex flex-col flex-1 min-w-0 relative">
         <header className="flex items-center justify-between h-16 px-4 bg-card/80 backdrop-blur-md border-b border-border shadow-sm z-30 sticky top-0">
-          <div className="flex items-center">
-            <button
-              className="focus:outline-none lg:hidden text-gray-500 hover:text-foreground mr-4 p-1 rounded-md"
-              onClick={() => setIsSidebarOpen(true)}
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            <h1 className="text-xl font-semibold text-foreground hidden sm:block">Super Admin Control Center</h1>
+          <div className="flex items-center min-w-0">
+            <button className="focus:outline-none lg:hidden text-gray-500 hover:text-foreground mr-4 p-1 rounded-md flex-shrink-0" onClick={() => setIsSidebarOpen(true)}><Menu className="w-6 h-6" /></button>
+            <h1 className="text-base sm:text-xl font-semibold text-foreground truncate">{pageTitle}</h1>
+          </div>
+          <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+            <NotificationBell />
+            <Link to="/super-admin/profile" className="text-gray-400 hover:text-indigo-600 p-2 rounded-full hover:bg-secondary transition-colors" title="Profile & Settings"><Settings className="w-5 h-5" /></Link>
           </div>
         </header>
-
         <main className="flex-1 overflow-y-auto bg-secondary/20 relative">
-          <div className="p-4 sm:p-6 lg:p-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
-            <Outlet />
-          </div>
+          <div className="p-4 sm:p-6 lg:p-8 animate-in fade-in duration-500 max-w-7xl mx-auto"><Outlet /></div>
         </main>
       </div>
     </div>

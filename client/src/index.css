@@ -66,4 +66,50 @@
     @apply bg-background text-foreground min-h-screen text-base antialiased;
     font-family: 'Inter', system-ui, sans-serif;
   }
+
+  /* Prevent horizontal overflow at root */
+  html, body, #root {
+    overflow-x: hidden;
+  }
+}
+
+@layer utilities {
+  /* Custom scrollbar for sidebar & modals */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.3) transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.3);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(100, 116, 139, 0.5);
+  }
+
+  /* Responsive table utility */
+  .table-responsive {
+    @apply w-full overflow-x-auto -mx-0;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Smooth card hover lift */
+  .card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg;
+  }
+
+  /* Hide scrollbar but keep scrollable */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }

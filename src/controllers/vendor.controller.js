@@ -66,33 +66,39 @@ exports.getCompletedRequests = async (req, res, next) => {
 
 // --- UPDATE request status (strict ownership + complex check) ---
 // Enforces: assigned_vendor_id = current user AND complex_id match
-// Validates state machine: assigned → in_progress → completed
+// Validates state machine: pending → assigned → in_progress → completed
 exports.updateRequestStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
     const vendorId = req.user.id;
     const complexId = req.user.complex_id;
+    const vendorCategory = req.user.vendor_category;
 
     const validTransitions = {
+      'pending': ['assigned'],
       'assigned': ['in_progress'],
       'in_progress': ['completed'],
     };
 
-    // First verify the request belongs to this vendor AND this complex
+    // First verify the request belongs to this vendor AND this complex, OR is unassigned and matches category
     const verifyResult = await query(
-      `SELECT vr.id, vr.status, vr.user_id
+      `SELECT vr.id, vr.status, vr.user_id, vr.category
        FROM vendor_requests vr
        JOIN units un ON vr.unit_id = un.id
        JOIN buildings b ON un.building_id = b.id
        WHERE vr.id = $1
-         AND vr.assigned_vendor_id = $2
-         AND b.complex_id = $3`,
-      [id, vendorId, complexId]
+         AND b.complex_id = $2
+         AND (
+           vr.assigned_vendor_id = $3
+           OR
+           (vr.assigned_vendor_id IS NULL AND vr.status = 'pending' AND vr.category = $4)
+         )`,
+      [id, complexId, vendorId, vendorCategory]
     );
 
     if (verifyResult.rows.length === 0) {
-      return next(new AppError('Request not found or not assigned to you', 404));
+      return next(new AppError('Request not found, not assigned to you, or category mismatch', 404));
     }
 
     const currentStatus = verifyResult.rows[0].status;
@@ -105,10 +111,15 @@ exports.updateRequestStatus = async (req, res, next) => {
       ));
     }
 
-    const { rows } = await query(
-      `UPDATE vendor_requests SET status = $1 WHERE id = $2 RETURNING *`,
-      [status, id]
-    );
+    let updateQuery = `UPDATE vendor_requests SET status = $1 WHERE id = $2 RETURNING *`;
+    let queryParams = [status, id];
+
+    if (currentStatus === 'pending' && status === 'assigned') {
+      updateQuery = `UPDATE vendor_requests SET status = $1, assigned_vendor_id = $3 WHERE id = $2 RETURNING *`;
+      queryParams = [status, id, vendorId];
+    }
+
+    const { rows } = await query(updateQuery, queryParams);
 
     // Emit real-time update scoped to complex room
     const io = req.app.get('io');
@@ -118,14 +129,35 @@ exports.updateRequestStatus = async (req, res, next) => {
       io.emit('vendor_request_update', rows[0]); // fallback
     }
 
-    // Notify the requester when job is completed
-    if (status === 'completed') {
-      const { notify } = require('../services/notification.service');
-      const requesterId = verifyResult.rows[0].user_id;
+    // Notify the requester about status changes
+    const { notify } = require('../services/notification.service');
+    const requesterId = verifyResult.rows[0].user_id;
+    const category = verifyResult.rows[0].category || rows[0].category;
+
+    if (status === 'assigned') {
+      notify(io, requesterId, 'job_accepted',
+        'Service Request Accepted',
+        `Your ${category} service request has been accepted and assigned to a vendor.`,
+        { request_id: rows[0].id, category }
+      ).catch(() => {});
+      
+      // Also notify the vendor just in case they expect a confirmation notification
+      notify(io, vendorId, 'job_assigned',
+        'Job Accepted',
+        `You have successfully assigned yourself to the ${category} request.`,
+        { request_id: rows[0].id, category }
+      ).catch(() => {});
+    } else if (status === 'in_progress') {
+      notify(io, requesterId, 'job_started',
+        'Service Request Started',
+        `The vendor has started working on your ${category} service request.`,
+        { request_id: rows[0].id, category }
+      ).catch(() => {});
+    } else if (status === 'completed') {
       notify(io, requesterId, 'service_completed',
         'Service Request Completed',
-        `Your ${rows[0].category} service request has been completed.`,
-        { request_id: rows[0].id, category: rows[0].category }
+        `Your ${category} service request has been completed.`,
+        { request_id: rows[0].id, category }
       ).catch(() => {});
     }
 

@@ -219,32 +219,34 @@ export default function AdminDashboard() {
               No {activeTab} invoices found.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Resident</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {activePayments.map((row, i) => (
-                  <TableRow key={row.invoice_id + '-' + i}>
-                    <TableCell className="font-medium">{row.full_name}</TableCell>
-                    <TableCell className="text-gray-500 text-sm">{row.email}</TableCell>
-                    <TableCell className="font-semibold">₹{parseFloat(row.amount).toLocaleString()}</TableCell>
-                    <TableCell className="text-sm">{new Date(row.due_date).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {activeTab === 'paid' && <Badge variant="success">Paid</Badge>}
-                      {activeTab === 'unpaid' && <Badge variant="secondary">Unpaid</Badge>}
-                      {activeTab === 'overdue' && <Badge variant="destructive">Overdue</Badge>}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Resident</TableHead>
+                    <TableHead className="hidden sm:table-cell">Email</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead className="hidden sm:table-cell">Due Date</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {activePayments.map((row, i) => (
+                    <TableRow key={row.invoice_id + '-' + i}>
+                      <TableCell className="font-medium">{row.full_name}</TableCell>
+                      <TableCell className="text-gray-500 text-sm hidden sm:table-cell">{row.email}</TableCell>
+                      <TableCell className="font-semibold">₹{parseFloat(row.amount).toLocaleString()}</TableCell>
+                      <TableCell className="text-sm hidden sm:table-cell">{new Date(row.due_date).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {activeTab === 'paid' && <Badge variant="success">Paid</Badge>}
+                        {activeTab === 'unpaid' && <Badge variant="secondary">Unpaid</Badge>}
+                        {activeTab === 'overdue' && <Badge variant="destructive">Overdue</Badge>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -82,48 +82,48 @@ export default function SecurityDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Today's Visitors</h2>
           <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
-        <Button onClick={fetchVisitors} className="gap-2" variant="outline">
+        <Button onClick={fetchVisitors} className="gap-2 self-start sm:self-auto" variant="outline">
           <RefreshCw className="w-4 h-4" /> Refresh
         </Button>
       </div>
 
       {/* Quick Counters */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
         <Card className="border-none shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="p-3 rounded-2xl bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600">
-              <Clock className="w-6 h-6" />
+          <CardContent className="p-3 sm:p-5 flex items-center gap-2 sm:gap-4">
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 shrink-0">
+              <Clock className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Expected</p>
-              <p className="text-2xl font-bold">{counts.expected}</p>
+              <p className="text-xs sm:text-sm text-gray-500">Expected</p>
+              <p className="text-xl sm:text-2xl font-bold">{counts.expected}</p>
             </div>
           </CardContent>
         </Card>
         <Card className="border-none shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="p-3 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600">
-              <UserCheck className="w-6 h-6" />
+          <CardContent className="p-3 sm:p-5 flex items-center gap-2 sm:gap-4">
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 shrink-0">
+              <UserCheck className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Inside</p>
-              <p className="text-2xl font-bold">{counts.inside}</p>
+              <p className="text-xs sm:text-sm text-gray-500">Inside</p>
+              <p className="text-xl sm:text-2xl font-bold">{counts.inside}</p>
             </div>
           </CardContent>
         </Card>
         <Card className="border-none shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="p-3 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-500">
-              <UserX className="w-6 h-6" />
+          <CardContent className="p-3 sm:p-5 flex items-center gap-2 sm:gap-4">
+            <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-500 shrink-0">
+              <UserX className="w-4 h-4 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Left</p>
-              <p className="text-2xl font-bold">{counts.left}</p>
+              <p className="text-xs sm:text-sm text-gray-500">Left</p>
+              <p className="text-xl sm:text-2xl font-bold">{counts.left}</p>
             </div>
           </CardContent>
         </Card>
@@ -141,8 +141,8 @@ export default function SecurityDashboard() {
         ) : (
           visitors.map(visitor => (
             <Card key={visitor.id} className="animate-in fade-in slide-in-from-bottom-2 border-none shadow-md overflow-hidden">
-              <CardContent className="p-5 flex items-center justify-between">
-                <div className="flex items-center gap-4">
+              <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3 sm:gap-4">
                   <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center font-bold text-lg">
                     {visitor.visitor_name?.charAt(0)?.toUpperCase()}
                   </div>
@@ -156,7 +156,7 @@ export default function SecurityDashboard() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto shrink-0">
                   {statusBadge(visitor.status)}
 
                   {visitor.status === "pending" && (

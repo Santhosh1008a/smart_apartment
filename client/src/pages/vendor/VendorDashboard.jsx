@@ -8,7 +8,7 @@ import { io } from "socket.io-client"
 import toast from "react-hot-toast"
 
 const STATUS_CONFIG = {
-  pending:     { label: "Pending",     variant: "secondary", icon: Clock,         next: null,          nextLabel: null          },
+  pending:     { label: "Pending",     variant: "secondary", icon: Clock,         next: "assigned",    nextLabel: "Accept Job"   },
   assigned:    { label: "Assigned",    variant: "secondary", icon: Clock,         next: "in_progress", nextLabel: "Start Job"   },
   in_progress: { label: "In Progress", variant: "default",   icon: Play,          next: "completed",   nextLabel: "Mark Done"   },
   completed:   { label: "Completed",   variant: "success",   icon: CheckCircle2,  next: null,          nextLabel: null          },

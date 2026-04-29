@@ -1,22 +1,28 @@
 import { useState } from "react"
-import { Outlet, NavLink, useNavigate } from "react-router-dom"
+import { Outlet, NavLink, useNavigate, Link, useLocation } from "react-router-dom"
 import { useAuthStore } from "../store/useAuthStore"
 import {
-  Building2,
   Shield,
   Users,
-  ScanLine,
   LogOut,
   Menu,
-  Bell
+  Settings,
+  X,
+  Building2
 } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
 
+const PAGE_TITLES = {
+  "/security": "Security Checkpoint",
+  "/security/profile": "Profile & Settings",
+}
+
 export default function SecurityLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const { user, logout } = useAuthStore()
+  const { user, complex, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const handleLogout = () => {
     logout()
@@ -26,6 +32,8 @@ export default function SecurityLayout() {
   const navigation = [
     { name: "Today's Visitors", href: "/security", icon: Users },
   ]
+
+  const pageTitle = PAGE_TITLES[location.pathname] || "Security Checkpoint"
 
   return (
     <div className="flex bg-background min-h-screen font-sans">
@@ -40,7 +48,7 @@ export default function SecurityLayout() {
         "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-auto flex flex-col shadow-xl lg:shadow-none",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="flex items-center justify-center h-16 border-b border-border px-4">
+        <div className="flex items-center justify-between h-16 border-b border-border px-4 shrink-0">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center shadow-md shadow-emerald-500/20">
               <Shield className="w-5 h-5 text-white" />
@@ -50,7 +58,17 @@ export default function SecurityLayout() {
               <span className="ml-1.5 text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">Guard</span>
             </div>
           </div>
+          <button className="lg:hidden text-gray-400 hover:text-foreground p-1" onClick={() => setIsSidebarOpen(false)}>
+            <X className="w-5 h-5" />
+          </button>
         </div>
+
+        {complex && (
+          <div className="px-4 py-3 border-b border-border/50 bg-secondary/20">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Assigned Society</p>
+            <p className="text-sm font-semibold text-foreground truncate">{complex.name}</p>
+          </div>
+        )}
 
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
           {navigation.map((item) => (
@@ -73,17 +91,22 @@ export default function SecurityLayout() {
         </nav>
 
         <div className="p-4 border-t border-border mt-auto">
-          <div className="flex items-center mb-4 px-2">
+          <Link
+            to="/security/profile"
+            onClick={() => setIsSidebarOpen(false)}
+            className="flex items-center mb-3 px-2 py-2 rounded-lg hover:bg-secondary transition-colors group"
+          >
             <img
-              src={user?.avatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=guard"}
+              src={user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id || "guard"}`}
               alt="Avatar"
-              className="w-10 h-10 rounded-full border border-border shadow-sm"
+              className="w-10 h-10 rounded-full border border-border shadow-sm flex-shrink-0"
             />
-            <div className="ml-3 truncate">
-              <p className="text-sm font-medium text-foreground truncate">{user?.full_name}</p>
+            <div className="ml-3 truncate flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground truncate group-hover:text-emerald-600 transition-colors">{user?.full_name}</p>
               <p className="text-xs text-emerald-600 dark:text-emerald-400 truncate capitalize font-medium">{user?.role}</p>
             </div>
-          </div>
+            <Settings className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1 group-hover:text-emerald-600 transition-colors" />
+          </Link>
           <button
             onClick={handleLogout}
             className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors dark:text-red-400 dark:hover:bg-red-950/30"
@@ -94,19 +117,26 @@ export default function SecurityLayout() {
         </div>
       </div>
 
-      <div className="flex flex-col flex-1 w-0 relative">
+      <div className="flex flex-col flex-1 min-w-0 relative">
         <header className="flex items-center justify-between h-16 px-4 bg-card/80 backdrop-blur-md border-b border-border shadow-sm z-30 sticky top-0">
-          <div className="flex items-center">
+          <div className="flex items-center min-w-0">
             <button
-              className="focus:outline-none lg:hidden text-gray-500 hover:text-foreground mr-4 p-1 rounded-md"
+              className="focus:outline-none lg:hidden text-gray-500 hover:text-foreground mr-4 p-1 rounded-md flex-shrink-0"
               onClick={() => setIsSidebarOpen(true)}
             >
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="text-xl font-semibold text-foreground hidden sm:block">Security Checkpoint</h1>
+            <h1 className="text-base sm:text-xl font-semibold text-foreground truncate">{pageTitle}</h1>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
             <NotificationBell />
+            <Link
+              to="/security/profile"
+              className="text-gray-400 hover:text-emerald-600 p-2 rounded-full hover:bg-secondary transition-colors"
+              title="Profile & Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </Link>
           </div>
         </header>
 

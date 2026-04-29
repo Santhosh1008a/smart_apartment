@@ -232,46 +232,44 @@ exports.raiseVendorRequest = async (req, res, next) => {
     const user_id = req.user.id;
     const complexId = req.complexId;
 
-    // Auto-assign to a vendor in the same complex whose category matches
-    let assignedVendorId = null;
+    // We no longer auto-assign to a single vendor. Instead, we leave it 'pending'
+    // and notify ALL vendors in the complex who match the category.
+    const status = 'pending';
+
+    const { rows } = await query(
+      `INSERT INTO vendor_requests (user_id, unit_id, category, description, priority, status)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [user_id, unit_id, category, description, priority || 'medium', status]
+    );
+
+    // Notify all matching vendors in the complex
     if (complexId && category) {
-      const vendorRes = await query(
+      const vendorsRes = await query(
         `SELECT id FROM users 
          WHERE role = 'vendor' 
            AND complex_id = $1 
            AND vendor_category = $2 
-           AND is_active = true 
-         LIMIT 1`,
+           AND is_active = true`,
         [complexId, category]
       );
-      if (vendorRes.rows.length > 0) {
-        assignedVendorId = vendorRes.rows[0].id;
+      
+      const vendorIds = vendorsRes.rows.map(v => v.id);
+      
+      if (vendorIds.length > 0) {
+        const io = req.app.get('io');
+        const { notifyMany } = require('../services/notification.service');
+        notifyMany(io, vendorIds, 'new_job_available',
+          'New Job Available',
+          `A new ${category} service request is available in your complex.`,
+          { request_id: rows[0].id, category, priority: priority || 'medium' }
+        ).catch(() => {});
       }
-    }
-
-    const status = assignedVendorId ? 'assigned' : 'pending';
-
-    const { rows } = await query(
-      `INSERT INTO vendor_requests (user_id, unit_id, category, description, priority, assigned_vendor_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [user_id, unit_id, category, description, priority || 'medium', assignedVendorId, status]
-    );
-
-    // Notify assigned vendor in real-time
-    if (assignedVendorId) {
-      const io = req.app.get('io');
-      const { notify } = require('../services/notification.service');
-      notify(io, assignedVendorId, 'job_assigned',
-        'New Job Assigned',
-        `You have a new ${category} service request.`,
-        { request_id: rows[0].id, category, priority: priority || 'medium' }
-      ).catch(() => {});
     }
 
     res.status(201).json({ 
       success: true, 
       data: rows[0],
-      assigned: !!assignedVendorId
+      assigned: false
     });
   } catch (err) {
     next(err);
