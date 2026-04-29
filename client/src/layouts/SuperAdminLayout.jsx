@@ -4,6 +4,7 @@ import { useAuthStore } from "../store/useAuthStore"
 import { Building2, LayoutDashboard, LogOut, Menu, Settings, X } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
+import AIAssistant from "../components/layout/AIAssistant"
 
 export default function SuperAdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -67,6 +68,7 @@ export default function SuperAdminLayout() {
         <main className="flex-1 overflow-y-auto bg-secondary/20 relative">
           <div className="p-4 sm:p-6 lg:p-8 animate-in fade-in duration-500 max-w-7xl mx-auto"><Outlet /></div>
         </main>
+        <AIAssistant />
       </div>
     </div>
   )

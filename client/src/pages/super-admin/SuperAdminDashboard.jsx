@@ -7,8 +7,16 @@ import { getSuperAdminDashboard, createComplex, createAdmin } from "../../api/su
 import { Building2, Users, Plus, Loader2, Shield, MapPin } from "lucide-react"
 import toast from "react-hot-toast"
 
+const asArray = (value) => Array.isArray(value) ? value : []
+const emptyDashboard = { total_complexes: 0, total_users: 0, complexes: [] }
+const normalizeDashboard = (data) => ({
+  ...emptyDashboard,
+  ...(data || {}),
+  complexes: asArray(data?.complexes),
+})
+
 export default function SuperAdminDashboard() {
-  const [data, setData] = useState(null)
+  const [data, setData] = useState(emptyDashboard)
   const [isLoading, setIsLoading] = useState(true)
 
   // Create Complex form
@@ -25,7 +33,7 @@ export default function SuperAdminDashboard() {
     try {
       setIsLoading(true)
       const res = await getSuperAdminDashboard()
-      if (res.success) setData(res.data)
+      setData(res.success ? normalizeDashboard(res.data) : emptyDashboard)
     } catch (err) {
       toast.error("Failed to load dashboard")
     } finally {
@@ -79,8 +87,6 @@ export default function SuperAdminDashboard() {
       </div>
     )
   }
-
-  if (!data) return null
 
   const statCards = [
     {

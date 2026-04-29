@@ -173,14 +173,22 @@ CREATE TABLE emergency_alerts (
 -- 12. PARKING SLOTS
 -- ============================================================
 CREATE TABLE parking_slots (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  building_id UUID        NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
-  slot_number VARCHAR(20) NOT NULL,
-  type        VARCHAR(20) DEFAULT 'car'
-              CHECK (type IN ('car','bike','ev')),
-  status      VARCHAR(20) NOT NULL DEFAULT 'available'
-              CHECK (status IN ('available','assigned','maintenance')),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  complex_id   UUID REFERENCES complexes(id) ON DELETE CASCADE,
+  building_id  UUID REFERENCES buildings(id) ON DELETE CASCADE,
+  display_name VARCHAR(120),
+  parking_area VARCHAR(80),
+  slot_label   VARCHAR(40),
+  slot_number  VARCHAR(20) NOT NULL,
+  type         VARCHAR(20) DEFAULT 'car'
+               CHECK (type IN ('car','bike','ev')),
+  parking_type VARCHAR(20) DEFAULT 'car',
+  slot_kind    VARCHAR(30) DEFAULT 'resident',
+  status       VARCHAR(20) NOT NULL DEFAULT 'available'
+               CHECK (status IN ('available','occupied','assigned','reserved','maintenance','inactive')),
+  notes        TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ DEFAULT now(),
   UNIQUE (building_id, slot_number)
 );
 

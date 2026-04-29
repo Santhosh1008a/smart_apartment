@@ -6,9 +6,11 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "migrate": "node run_migration.js",
     "test": "jest"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@sentry/node": "^10.44.0",
     "@sentry/profiling-node": "^10.44.0",
     "@supabase/supabase-js": "^2.99.3",

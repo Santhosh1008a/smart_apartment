@@ -9,10 +9,18 @@ const pool = new Pool({
 
 async function run() {
   try {
-    const sql = fs.readFileSync(path.join(__dirname, 'migrations', '005_add_complex_id_to_users.sql'), 'utf8');
-    console.log('Running migration...');
-    await pool.query(sql);
-    console.log('Migration successful.');
+    const migrationsDir = path.join(__dirname, 'migrations');
+    const files = fs.readdirSync(migrationsDir)
+      .filter((file) => file.endsWith('.sql'))
+      .sort();
+
+    for (const file of files) {
+      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      console.log(`Running migration ${file}...`);
+      await pool.query(sql);
+    }
+
+    console.log('Migrations successful.');
   } catch (err) {
     console.error('Migration failed:', err.message);
   } finally {

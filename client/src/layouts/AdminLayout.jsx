@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
+import AIAssistant from "../components/layout/AIAssistant"
 
 const PAGE_TITLES = {
   "/admin": "Admin Control Center",
@@ -169,6 +170,7 @@ export default function AdminLayout() {
             <Outlet />
           </div>
         </main>
+        <AIAssistant />
       </div>
     </div>
   )

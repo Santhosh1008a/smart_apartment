@@ -1,4 +1,5 @@
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = rateLimit;
 
 // Used for general endpoints
 const globalLimiter = rateLimit({
@@ -27,8 +28,19 @@ const paymentLimiter = rateLimit({
   message: { success: false, message: 'Too many payment requests, please try again later' }
 });
 
+// Stricter limiter for AI assistant prompts
+const aiLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
+  message: { success: false, message: 'Too many assistant requests, please try again shortly' }
+});
+
 module.exports = {
   globalLimiter,
   authLimiter,
-  paymentLimiter
+  paymentLimiter,
+  aiLimiter
 };

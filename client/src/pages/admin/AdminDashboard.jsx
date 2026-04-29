@@ -8,10 +8,42 @@ import { Users, Home, IndianRupee, FileText, TrendingUp, AlertTriangle, Loader2,
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts"
 import toast from "react-hot-toast"
 
+const asArray = (value) => Array.isArray(value) ? value : []
+const asNumber = (value) => Number(value || 0) || 0
+const emptyStats = {
+  total_residents: 0,
+  occupied_units: 0,
+  vacant_units: 0,
+  total_revenue: 0,
+  pending_invoices: 0,
+  active_visitors: 0,
+}
+const emptyPayments = { paid: [], unpaid: [], overdue: [] }
+const emptyTrends = {
+  monthly_revenue: [],
+  occupancy: { occupied: 0, vacant: 0, occupancy_pct: 0 },
+  payment_trends: [],
+}
+const normalizeStats = (data) => ({
+  ...emptyStats,
+  ...(data || {}),
+  total_revenue: asNumber(data?.total_revenue),
+})
+const normalizePayments = (data) => ({
+  paid: asArray(data?.paid),
+  unpaid: asArray(data?.unpaid),
+  overdue: asArray(data?.overdue),
+})
+const normalizeTrends = (data) => ({
+  monthly_revenue: asArray(data?.monthly_revenue),
+  occupancy: { ...emptyTrends.occupancy, ...(data?.occupancy || {}) },
+  payment_trends: asArray(data?.payment_trends),
+})
+
 export default function AdminDashboard() {
-  const [stats, setStats] = useState(null)
+  const [stats, setStats] = useState(emptyStats)
   const [payments, setPayments] = useState({ paid: [], unpaid: [], overdue: [] })
-  const [trends, setTrends] = useState(null)
+  const [trends, setTrends] = useState(emptyTrends)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("overdue")
   const { user } = useAuthStore()
@@ -25,9 +57,9 @@ export default function AdminDashboard() {
           getPaymentStatus(),
           getAnalyticsTrends()
         ])
-        if (statsRes.success) setStats(statsRes.data)
-        if (paymentsRes.success) setPayments(paymentsRes.data)
-        if (trendsRes.success) setTrends(trendsRes.data)
+        setStats(statsRes.success ? normalizeStats(statsRes.data) : emptyStats)
+        setPayments(paymentsRes.success ? normalizePayments(paymentsRes.data) : emptyPayments)
+        setTrends(trendsRes.success ? normalizeTrends(trendsRes.data) : emptyTrends)
       } catch (err) {
         toast.error("Error loading admin dashboard")
       } finally {
@@ -37,14 +69,14 @@ export default function AdminDashboard() {
     fetchData()
   }, [])
 
-  const statCards = stats ? [
+  const statCards = [
     { title: "Total Residents", value: stats.total_residents, icon: Users, color: "text-blue-500", bg: "bg-blue-100 dark:bg-blue-900/30", border: "border-blue-200 dark:border-blue-800" },
     { title: "Occupied Units", value: stats.occupied_units, icon: Home, color: "text-emerald-500", bg: "bg-emerald-100 dark:bg-emerald-900/30", border: "border-emerald-200 dark:border-emerald-800" },
     { title: "Vacant Units", value: stats.vacant_units, icon: Home, color: "text-orange-500", bg: "bg-orange-100 dark:bg-orange-900/30", border: "border-orange-200 dark:border-orange-800" },
-    { title: "Total Revenue", value: `₹${stats.total_revenue.toLocaleString()}`, icon: IndianRupee, color: "text-green-500", bg: "bg-green-100 dark:bg-green-900/30", border: "border-green-200 dark:border-green-800" },
+    { title: "Total Revenue", value: `INR ${stats.total_revenue.toLocaleString()}`, icon: IndianRupee, color: "text-green-500", bg: "bg-green-100 dark:bg-green-900/30", border: "border-green-200 dark:border-green-800" },
     { title: "Pending Invoices", value: stats.pending_invoices, icon: FileText, color: "text-yellow-500", bg: "bg-yellow-100 dark:bg-yellow-900/30", border: "border-yellow-200 dark:border-yellow-800" },
     { title: "Active Visitors", value: stats.active_visitors, icon: TrendingUp, color: "text-violet-500", bg: "bg-violet-100 dark:bg-violet-900/30", border: "border-violet-200 dark:border-violet-800" },
-  ] : []
+  ]
 
   const tabs = [
     { key: "overdue", label: "Overdue", count: payments.overdue.length, color: "text-red-600 border-red-500" },
@@ -111,11 +143,11 @@ export default function AdminDashboard() {
                 <BarChart data={trends.monthly_revenue} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888833" />
                   <XAxis dataKey="month" tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short' })} axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 12}} />
-                  <YAxis tickFormatter={(val) => `₹${val/1000}k`} axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 12}} />
+                  <YAxis tickFormatter={(val) => `INR ${val/1000}k`} axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 12}} />
                   <Tooltip
                     cursor={{fill: '#88888811'}}
                     contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}}
-                    formatter={(value) => [`₹${value.toLocaleString()}`, "Revenue"]}
+                    formatter={(value) => [`INR ${asNumber(value).toLocaleString()}`, "Revenue"]}
                     labelFormatter={(label) => new Date(label).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                   />
                   <Bar dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -235,7 +267,7 @@ export default function AdminDashboard() {
                     <TableRow key={row.invoice_id + '-' + i}>
                       <TableCell className="font-medium">{row.full_name}</TableCell>
                       <TableCell className="text-gray-500 text-sm hidden sm:table-cell">{row.email}</TableCell>
-                      <TableCell className="font-semibold">₹{parseFloat(row.amount).toLocaleString()}</TableCell>
+                      <TableCell className="font-semibold">INR {asNumber(row.amount).toLocaleString()}</TableCell>
                       <TableCell className="text-sm hidden sm:table-cell">{new Date(row.due_date).toLocaleDateString()}</TableCell>
                       <TableCell>
                         {activeTab === 'paid' && <Badge variant="success">Paid</Badge>}

@@ -139,6 +139,9 @@ const securityRoutes = require('./routes/security.routes');
 const vendorRoutes = require('./routes/vendor.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const parkingRoutes = require('./routes/parking.routes');
+const assistantRoutes = require('./routes/assistant.routes');
+console.log(`GEMINI_API_KEY loaded: ${process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'replace_with_your_gemini_api_key' ? 'YES' : 'NO'}`);
+console.log(`Active Gemini model: ${process.env.GEMINI_MODEL || 'gemini-1.5-flash'}`);
 
 // Mount Routes
 app.use('/api/v1/auth', authRoutes);
@@ -152,6 +155,8 @@ app.use('/api/v1/security', securityRoutes);
 app.use('/api/v1/vendor', vendorRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/parking', parkingRoutes);
+app.use('/api/v1/assistant', assistantRoutes);
+console.log('Assistant API active');
 
 // Global Error Handler
 app.use((err, req, res, next) => {

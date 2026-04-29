@@ -9,6 +9,9 @@ import { Badge } from "../../components/ui/Badge"
 import { Link } from "react-router-dom"
 import toast from "react-hot-toast"
 
+const asArray = (value) => Array.isArray(value) ? value : []
+const asAmount = (value) => Number.parseFloat(value || 0) || 0
+
 export default function Dashboard() {
   const { user, complex, building, unit } = useAuthStore()
   
@@ -39,13 +42,13 @@ export default function Dashboard() {
         const invoicesRes = invoicesResult.status === 'fulfilled' ? invoicesResult.value : null
         const alertsRes = alertsResult.status === 'fulfilled' ? alertsResult.value : null
 
-        const passes = passesRes?.success ? (passesRes.data || []) : []
-        const invoices = invoicesRes?.success ? (invoicesRes.data || []) : []
-        const alerts = alertsRes?.success ? (alertsRes.data || []) : []
+        const passes = passesRes?.success ? asArray(passesRes.data) : []
+        const invoices = invoicesRes?.success ? asArray(invoicesRes.data) : []
+        const alerts = alertsRes?.success ? asArray(alertsRes.data) : []
 
         const activeVis = passes.filter(p => p.status === 'checked_in').length
         const unpaidInvoices = invoices.filter(i => i.status !== 'paid')
-        const unpaid = unpaidInvoices.reduce((sum, i) => sum + parseFloat(i.amount || 0), 0)
+        const unpaid = unpaidInvoices.reduce((sum, i) => sum + asAmount(i.amount), 0)
 
         setStats({
           activeVisitors: activeVis,
@@ -68,7 +71,7 @@ export default function Dashboard() {
 
   const statCards = [
     { title: "Active Visitors", value: stats.activeVisitors, icon: Users, color: "text-blue-500", bg: "bg-blue-100 dark:bg-blue-900/30", border: "border-blue-200 dark:border-blue-800" },
-    { title: "Unpaid Invoices", value: stats.unpaidCount, sub: stats.unpaidCount > 0 ? `₹${stats.unpaidAmount.toLocaleString()} due` : null, icon: FileText, color: "text-orange-500", bg: "bg-orange-100 dark:bg-orange-900/30", border: "border-orange-200 dark:border-orange-800" },
+    { title: "Unpaid Invoices", value: stats.unpaidCount, sub: stats.unpaidCount > 0 ? `INR ${stats.unpaidAmount.toLocaleString()} due` : null, icon: FileText, color: "text-orange-500", bg: "bg-orange-100 dark:bg-orange-900/30", border: "border-orange-200 dark:border-orange-800" },
     { title: "Active Alerts", value: stats.activeAlerts, icon: AlertCircle, color: "text-red-500", bg: "bg-red-100 dark:bg-red-900/30", border: "border-red-200 dark:border-red-800" },
   ]
 
@@ -200,7 +203,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-lg">₹{parseFloat(inv.amount).toLocaleString()}</p>
+                          <p className="font-bold text-lg">INR {asAmount(inv.amount).toLocaleString()}</p>
                           <p className="text-[11px] uppercase tracking-wider text-orange-600 dark:text-orange-400 font-bold mt-0.5">Unpaid</p>
                         </div>
                       </div>
