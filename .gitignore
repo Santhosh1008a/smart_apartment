@@ -3,14 +3,22 @@ node_modules/
 
 # Environment variables
 .env
+.env.local
+.env.production
+.env.development
+.env.example
 
 # Logs
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Build output
 dist/
 build/
+.next/
 
 # OS files
 .DS_Store
@@ -19,6 +27,30 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
 
 # Coverage
 coverage/
+.nyc_output
+
+# Sensitive & Local files
+credentials.txt
+*.pem
+*.key
+*.cert
+service-account*.json
+
+# Scratch & Migration scripts
+scratch/
+run_*.js
+create_*.js
+seed_*.js
+backfill_*.js
+
+# Architecture & Docs (Internal)
+architecture*
+walkthrough*
+task*.md
+task testing

@@ -4,6 +4,21 @@ const { query } = require('../config/db');
 const supabase = require('../config/supabase');
 const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const { AppError } = require('../middlewares/error.middleware');
+const logger = require('../utils/logger');
+
+const AVATAR_BUCKET = process.env.SUPABASE_AVATAR_BUCKET || 'avatars';
+const getStorageErrorDetails = (error) => {
+  const original = error?.originalError || error?.cause;
+  return {
+    name: error?.name,
+    message: error?.message,
+    status: error?.status,
+    statusCode: error?.statusCode,
+    originalMessage: original?.message,
+    originalCode: original?.cause?.code || original?.code,
+    originalCause: original?.cause?.message,
+  };
+};
 
 exports.register = async (req, res, next) => {
   try {
@@ -241,6 +256,19 @@ exports.updateAvatar = async (req, res, next) => {
 
     const { id } = req.user;
     const file = req.file;
+    if (!file.buffer || !Buffer.isBuffer(file.buffer)) {
+      logger.warn('Avatar upload missing file buffer', { requestId: req.id, userId: id, field: file.fieldname });
+      return next(new AppError('Uploaded avatar file was not readable', 400));
+    }
+
+    logger.info('Avatar upload received', {
+      requestId: req.id,
+      userId: id,
+      field: file.fieldname,
+      mimetype: file.mimetype,
+      size: file.size,
+      bucket: AVATAR_BUCKET,
+    });
 
     // First check if user already has an avatar
     const { rows: userRows } = await query('SELECT avatar_url FROM users WHERE id = $1', [id]);
@@ -253,38 +281,70 @@ exports.updateAvatar = async (req, res, next) => {
         const urlParts = oldAvatarUrl.split('/public/avatars/');
         if (urlParts.length > 1) {
           const oldFilePath = urlParts[1];
-          await supabase.storage.from('avatars').remove([oldFilePath]);
+          await supabase.storage.from(AVATAR_BUCKET).remove([oldFilePath]);
+          logger.info('Old avatar removed', { requestId: req.id, userId: id, oldFilePath });
         }
       } catch (err) {
         // If deletion fails, log it but don't stop the new upload
-        const logger = require('../utils/logger');
-        logger.warn(`Failed to delete old avatar for user ${id}: ${err.message}`);
+        logger.warn('Failed to delete old avatar', { requestId: req.id, userId: id, message: err.message });
       }
     }
 
-    // Generate unique filename: avatars/{userId}-{timestamp}
+    // Generate unique filename inside the avatars bucket
     const timestamp = Date.now();
-    const filename = `${id}-${timestamp}-${file.originalname.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-    const filePath = `avatars/${filename}`;
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
+    const filePath = `${id}/${timestamp}-${safeName}`;
 
     // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: true
+    let uploadData;
+    let uploadError;
+    try {
+      ({ data: uploadData, error: uploadError } = await supabase.storage
+        .from(AVATAR_BUCKET)
+        .upload(filePath, file.buffer, {
+          contentType: file.mimetype,
+          cacheControl: '3600',
+          upsert: true
+        }));
+    } catch (err) {
+      logger.error('Supabase avatar upload threw', {
+        requestId: req.id,
+        userId: id,
+        bucket: AVATAR_BUCKET,
+        filePath,
+        message: err.message,
+        cause: err.cause?.message,
+        code: err.cause?.code,
       });
+      return next(new AppError('Error uploading avatar: could not reach Supabase Storage', 502));
+    }
 
     if (uploadError) {
-      return next(new AppError(`Error uploading to Supabase: ${uploadError.message}`, 500));
+      const storageError = getStorageErrorDetails(uploadError);
+      logger.error('Supabase avatar upload failed', {
+        requestId: req.id,
+        userId: id,
+        bucket: AVATAR_BUCKET,
+        filePath,
+        ...storageError,
+      });
+      if (storageError.originalCode === 'CERT_NOT_YET_VALID') {
+        return next(new AppError('Error uploading avatar: server clock is behind Supabase TLS certificate validity. Sync system date/time and retry.', 502));
+      }
+      return next(new AppError(`Error uploading avatar: ${uploadError.message}`, 500));
     }
+    logger.info('Supabase avatar upload succeeded', { requestId: req.id, userId: id, bucket: AVATAR_BUCKET, filePath, storagePath: uploadData?.path });
 
     // Get public URL
     const { data: publicUrlData } = supabase.storage
-      .from('avatars')
+      .from(AVATAR_BUCKET)
       .getPublicUrl(filePath);
 
     const avatarUrl = publicUrlData.publicUrl;
+    if (!avatarUrl) {
+      logger.error('Supabase public URL generation failed', { requestId: req.id, userId: id, bucket: AVATAR_BUCKET, filePath });
+      return next(new AppError('Avatar uploaded but public URL could not be generated', 500));
+    }
 
     // Update database
     const { rows } = await query(

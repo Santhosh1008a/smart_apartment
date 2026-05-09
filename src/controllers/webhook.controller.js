@@ -54,36 +54,32 @@ exports.handleRazorpayWebhook = async (req, res) => {
       return res.status(400).send('Missing payment data');
     }
 
-    // --- Step 3: Idempotency check ---
-    // If rz_payment_id already exists in razorpay_txns, this is a duplicate webhook
-    const dupeCheck = await query(
-      `SELECT id FROM razorpay_txns WHERE rz_payment_id = $1`,
-      [rzPaymentId]
-    );
+    // --- Step 3: Atomic transaction with FOR UPDATE lock ---
+    client = await getClient();
+    await client.query('BEGIN');
 
-    if (dupeCheck.rows.length > 0) {
-      logger.info(`Webhook duplicate ignored: ${rzPaymentId}`);
-      return res.status(200).send('Already processed');
-    }
-
-    // --- Step 4: Find the matching order ---
-    const txnCheck = await query(
-      `SELECT rt.id AS txn_id, rt.payment_id
+    // Find the matching order and lock it
+    const txnCheck = await client.query(
+      `SELECT rt.id AS txn_id, rt.payment_id, rt.rz_payment_id
        FROM razorpay_txns rt
-       WHERE rt.rz_order_id = $1`,
+       WHERE rt.rz_order_id = $1 FOR UPDATE`,
       [rzOrderId]
     );
 
     if (txnCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
       logger.warn(`Webhook: No matching order found for ${rzOrderId}`);
       return res.status(200).send('Order not found — ignoring');
     }
 
-    const { txn_id, payment_id } = txnCheck.rows[0];
+    const { txn_id, payment_id, rz_payment_id: existing_payment_id } = txnCheck.rows[0];
 
-    // --- Step 5: Atomic transaction ---
-    client = await getClient();
-    await client.query('BEGIN');
+    // --- Step 4: Idempotency check inside the lock ---
+    if (existing_payment_id) {
+      await client.query('ROLLBACK');
+      logger.info(`Webhook duplicate ignored (already verified): ${rzPaymentId}`);
+      return res.status(200).send('Already processed');
+    }
 
     // 5a. Update razorpay_txns with payment ID
     await client.query(
@@ -111,7 +107,7 @@ exports.handleRazorpayWebhook = async (req, res) => {
     await client.query('COMMIT');
     logger.info(`Webhook processed successfully: order=${rzOrderId} payment=${rzPaymentId}`);
 
-    // --- Step 6: Fire-and-forget notification ---
+    // --- Step 5: Fire-and-forget notification ---
     try {
       const userResult = await query(
         `SELECT p.user_id, p.invoice_id, i.amount, i.type
@@ -138,6 +134,13 @@ exports.handleRazorpayWebhook = async (req, res) => {
     if (client) {
       try { await client.query('ROLLBACK'); } catch (rbErr) { /* ignore */ }
     }
+    
+    // Handle unique constraint violation gracefully (concurrent webhook delivery)
+    if (err.code === '23505') {
+      logger.info('Webhook duplicate ignored via unique constraint.');
+      return res.status(200).send('Already processed');
+    }
+
     logger.error('Webhook processing error:', err);
     // Return 200 to prevent Razorpay from retrying on our bugs
     // Only return 5xx for truly transient errors

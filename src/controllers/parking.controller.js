@@ -43,6 +43,22 @@ const ensureSlotInComplex = async (slotId, complexId) => {
   return rows[0] || null;
 };
 
+const ensureVisitorPassInComplex = async (passId, complexId) => {
+  const { rows } = await query(
+    `SELECT vp.id, uu.unit_id
+     FROM visitor_passes vp
+     JOIN users u ON vp.host_user_id = u.id
+     JOIN user_units uu ON uu.user_id = u.id AND uu.moved_out_at IS NULL
+     JOIN units un ON uu.unit_id = un.id
+     JOIN buildings b ON un.building_id = b.id
+     WHERE vp.id = $1 AND b.complex_id = $2
+     ORDER BY uu.moved_in_at DESC NULLS LAST
+     LIMIT 1`,
+    [passId, complexId]
+  );
+  return rows[0] || null;
+};
+
 exports.getAdminOverview = async (req, res, next) => {
   try {
     const { complexId } = req;
@@ -91,12 +107,12 @@ exports.listSlots = async (req, res, next) => {
               COALESCE(pv.vehicle_type, pa.vehicle_type) AS vehicle_type,
               resident.full_name AS resident_name
        FROM parking_slots ps
-       LEFT JOIN buildings b ON ps.building_id = b.id
-       LEFT JOIN parking_assignments pa ON pa.slot_id = ps.id AND ${activeAssignmentClause}
+       LEFT JOIN buildings b ON ps.building_id = b.id AND b.complex_id = ps.complex_id
+       LEFT JOIN parking_assignments pa ON pa.slot_id = ps.id AND pa.complex_id = ps.complex_id AND ${activeAssignmentClause}
        LEFT JOIN units un ON pa.unit_id = un.id
-       LEFT JOIN buildings ub ON un.building_id = ub.id
-       LEFT JOIN parking_vehicles pv ON pa.vehicle_id = pv.id
-       LEFT JOIN users resident ON pv.resident_id = resident.id
+       LEFT JOIN buildings ub ON un.building_id = ub.id AND ub.complex_id = ps.complex_id
+       LEFT JOIN parking_vehicles pv ON pa.vehicle_id = pv.id AND pv.complex_id = ps.complex_id
+       LEFT JOIN users resident ON pv.resident_id = resident.id AND resident.complex_id = ps.complex_id
        WHERE ${filters.join(' AND ')}
        ORDER BY ps.slot_kind, ps.parking_area, ps.display_name`,
       params
@@ -106,6 +122,11 @@ exports.listSlots = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+};
+
+exports.listSecurityVisitorSlots = (req, res, next) => {
+  req.query.slot_kind = 'visitor';
+  return exports.listSlots(req, res, next);
 };
 
 exports.createSlot = async (req, res, next) => {
@@ -171,8 +192,8 @@ exports.updateSlot = async (req, res, next) => {
 
     if (req.body.status === 'available') {
       const active = await query(
-        `SELECT id FROM parking_assignments WHERE slot_id = $1 AND ${activeAssignmentWhere} LIMIT 1`,
-        [id]
+        `SELECT id FROM parking_assignments WHERE slot_id = $1 AND complex_id = $2 AND ${activeAssignmentWhere} LIMIT 1`,
+        [id, complexId]
       );
       if (active.rows.length > 0) {
         return next(new AppError('Release the active assignment before marking this slot available', 400));
@@ -293,8 +314,8 @@ exports.assignSlot = async (req, res, next) => {
 
     await client.query('BEGIN');
     const activeSlot = await client.query(
-      `SELECT id FROM parking_assignments WHERE slot_id = $1 AND ${activeAssignmentWhere} FOR UPDATE`,
-      [slot_id]
+      `SELECT id FROM parking_assignments WHERE slot_id = $1 AND complex_id = $2 AND ${activeAssignmentWhere} FOR UPDATE`,
+      [slot_id, complexId]
     );
     if (activeSlot.rows.length > 0) {
       await client.query('ROLLBACK');
@@ -401,7 +422,7 @@ exports.getMyParking = async (req, res, next) => {
       query(
         `SELECT pr.*, pv.vehicle_number
          FROM parking_requests pr
-         LEFT JOIN parking_vehicles pv ON pr.vehicle_id = pv.id
+         LEFT JOIN parking_vehicles pv ON pr.vehicle_id = pv.id AND pv.complex_id = pr.complex_id
          WHERE pr.complex_id = $1 AND pr.unit_id = $2 AND pr.resident_id = $3
          ORDER BY pr.created_at DESC`,
         [complexId, residentUnit.unit_id, req.user.id]
@@ -468,10 +489,10 @@ exports.listRequests = async (req, res, next) => {
       `SELECT pr.*, pv.vehicle_number, u.full_name AS resident_name,
               un.unit_number, b.name AS building_name
        FROM parking_requests pr
-       JOIN users u ON pr.resident_id = u.id
+       JOIN users u ON pr.resident_id = u.id AND u.complex_id = pr.complex_id
        JOIN units un ON pr.unit_id = un.id
-       JOIN buildings b ON un.building_id = b.id
-       LEFT JOIN parking_vehicles pv ON pr.vehicle_id = pv.id
+       JOIN buildings b ON un.building_id = b.id AND b.complex_id = pr.complex_id
+       LEFT JOIN parking_vehicles pv ON pr.vehicle_id = pv.id AND pv.complex_id = pr.complex_id
        WHERE ${filters.join(' AND ')}
        ORDER BY CASE pr.status WHEN 'pending' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END,
                 pr.created_at DESC`,
@@ -511,15 +532,28 @@ exports.createVisitorSession = async (req, res, next) => {
   try {
     const { complexId } = req;
     const { slot_id, visitor_name, visitor_phone, vehicle_number, host_unit_id, visitor_pass_id, notes } = req.body;
+    let resolvedHostUnitId = host_unit_id || null;
 
     if (host_unit_id) {
       const unit = await ensureUnitInComplex(host_unit_id, complexId);
       if (!unit) return next(new AppError('Host unit not found in your society', 404));
     }
 
+    if (visitor_pass_id) {
+      const visitorPass = await ensureVisitorPassInComplex(visitor_pass_id, complexId);
+      if (!visitorPass) return next(new AppError('Visitor pass not found in your society', 404));
+      if (resolvedHostUnitId && visitorPass.unit_id !== resolvedHostUnitId) {
+        return next(new AppError('Visitor pass does not belong to the selected host unit', 400));
+      }
+      resolvedHostUnitId = resolvedHostUnitId || visitorPass.unit_id;
+    }
+
     if (slot_id) {
       const slot = await ensureSlotInComplex(slot_id, complexId);
       if (!slot) return next(new AppError('Visitor parking slot not found in your society', 404));
+      if (req.user.role === 'security' && slot.slot_kind !== 'visitor') {
+        return next(new AppError('Security can only use visitor parking slots', 403));
+      }
       if (!['available', 'reserved'].includes(slot.status)) {
         return next(new AppError('Selected visitor parking slot is not available', 400));
       }
@@ -539,14 +573,24 @@ exports.createVisitorSession = async (req, res, next) => {
         visitor_name,
         visitor_phone || null,
         normalizeVehicleNumber(vehicle_number),
-        host_unit_id || null,
+        resolvedHostUnitId,
         req.user.id,
         notes || null,
       ]
     );
 
     if (slot_id) {
-      await client.query(`UPDATE parking_slots SET status = 'occupied', updated_at = now() WHERE id = $1`, [slot_id]);
+      const slotUpdate = await client.query(
+        `UPDATE parking_slots
+         SET status = 'occupied', updated_at = now()
+         WHERE id = $1 AND complex_id = $2 AND status IN ('available', 'reserved')
+         RETURNING id`,
+        [slot_id, complexId]
+      );
+      if (slotUpdate.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return next(new AppError('Selected visitor parking slot is not available', 400));
+      }
     }
 
     await client.query('COMMIT');
@@ -580,7 +624,7 @@ exports.releaseVisitorSession = async (req, res, next) => {
     }
 
     if (rows[0].slot_id) {
-      await client.query(`UPDATE parking_slots SET status = 'available', updated_at = now() WHERE id = $1`, [rows[0].slot_id]);
+      await client.query(`UPDATE parking_slots SET status = 'available', updated_at = now() WHERE id = $1 AND complex_id = $2`, [rows[0].slot_id, complexId]);
     }
 
     await client.query('COMMIT');
@@ -600,9 +644,9 @@ exports.listVisitorSessions = async (req, res, next) => {
     const { rows } = await query(
       `SELECT vps.*, ps.display_name, un.unit_number, b.name AS building_name
        FROM visitor_parking_sessions vps
-       LEFT JOIN parking_slots ps ON vps.slot_id = ps.id
+       LEFT JOIN parking_slots ps ON vps.slot_id = ps.id AND ps.complex_id = vps.complex_id
        LEFT JOIN units un ON vps.host_unit_id = un.id
-       LEFT JOIN buildings b ON un.building_id = b.id
+       LEFT JOIN buildings b ON un.building_id = b.id AND b.complex_id = vps.complex_id
        WHERE vps.complex_id = $1 AND vps.status = $2
        ORDER BY vps.checked_in_at DESC`,
       [complexId, status]
@@ -627,9 +671,9 @@ exports.verifyVehicle = async (req, res, next) => {
        FROM parking_vehicles pv
        JOIN users u ON pv.resident_id = u.id
        JOIN units un ON pv.unit_id = un.id
-       JOIN buildings b ON un.building_id = b.id
-       LEFT JOIN parking_assignments pa ON pa.vehicle_id = pv.id AND ${activeAssignmentClause}
-       LEFT JOIN parking_slots ps ON pa.slot_id = ps.id
+       JOIN buildings b ON un.building_id = b.id AND b.complex_id = pv.complex_id
+       LEFT JOIN parking_assignments pa ON pa.vehicle_id = pv.id AND pa.complex_id = pv.complex_id AND ${activeAssignmentClause}
+       LEFT JOIN parking_slots ps ON pa.slot_id = ps.id AND ps.complex_id = pv.complex_id
        WHERE pv.complex_id = $1
          AND UPPER(pv.vehicle_number) = $2
          AND pv.is_active = true
@@ -650,8 +694,8 @@ exports.verifyVehicle = async (req, res, next) => {
               ps.display_name AS parking_slot, ps.parking_area
        FROM parking_assignments pa
        JOIN units un ON pa.unit_id = un.id
-       JOIN buildings b ON un.building_id = b.id
-       JOIN parking_slots ps ON pa.slot_id = ps.id
+       JOIN buildings b ON un.building_id = b.id AND b.complex_id = pa.complex_id
+       JOIN parking_slots ps ON pa.slot_id = ps.id AND ps.complex_id = pa.complex_id
        WHERE pa.complex_id = $1
          AND UPPER(pa.vehicle_number) = $2
          AND ${activeAssignmentWhere}
@@ -670,9 +714,9 @@ exports.verifyVehicle = async (req, res, next) => {
       `SELECT vps.vehicle_number, vps.visitor_name, vps.visitor_phone, vps.checked_in_at,
               ps.display_name AS parking_slot, un.unit_number, b.name AS building_name
        FROM visitor_parking_sessions vps
-       LEFT JOIN parking_slots ps ON vps.slot_id = ps.id
+       LEFT JOIN parking_slots ps ON vps.slot_id = ps.id AND ps.complex_id = vps.complex_id
        LEFT JOIN units un ON vps.host_unit_id = un.id
-       LEFT JOIN buildings b ON un.building_id = b.id
+       LEFT JOIN buildings b ON un.building_id = b.id AND b.complex_id = vps.complex_id
        WHERE vps.complex_id = $1
          AND UPPER(vps.vehicle_number) = $2
          AND vps.status = 'active'

@@ -15,7 +15,7 @@ exports.createPass = async (req, res, next) => {
 
 exports.verifyQR = async (req, res, next) => {
   try {
-    const result = await visitorService.verifyVisitorQR(req.body.token, req.user.role);
+    const result = await visitorService.verifyVisitorQR(req.body.token, req.user.role, req.user.complex_id || null);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     next(err);

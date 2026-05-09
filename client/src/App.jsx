@@ -26,6 +26,7 @@ import AdminParking from "./pages/admin/AdminParking"
 
 import SecurityLayout from "./layouts/SecurityLayout"
 import SecurityDashboard from "./pages/security/SecurityDashboard"
+import GuestVehicleParking from "./pages/security/GuestVehicleParking"
 
 import VendorLayout from "./layouts/VendorLayout"
 import VendorDashboard from "./pages/vendor/VendorDashboard"
@@ -141,6 +142,7 @@ function App() {
           }
         >
           <Route index element={<SecurityDashboard />} />
+          <Route path="guest-parking" element={<GuestVehicleParking />} />
           <Route path="profile" element={<ProfileSettings />} />
         </Route>
 

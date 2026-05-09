@@ -8,7 +8,8 @@ import {
   Menu,
   Settings,
   X,
-  Building2
+  Building2,
+  CircleParking
 } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
@@ -16,6 +17,7 @@ import AIAssistant from "../components/layout/AIAssistant"
 
 const PAGE_TITLES = {
   "/security": "Security Checkpoint",
+  "/security/guest-parking": "Guest Vehicle Parking",
   "/security/profile": "Profile & Settings",
 }
 
@@ -32,6 +34,7 @@ export default function SecurityLayout() {
 
   const navigation = [
     { name: "Today's Visitors", href: "/security", icon: Users },
+    { name: "Guest Parking", href: "/security/guest-parking", icon: CircleParking },
   ]
 
   const pageTitle = PAGE_TITLES[location.pathname] || "Security Checkpoint"

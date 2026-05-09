@@ -29,11 +29,11 @@ router.post('/vehicles', requireRole(['resident', 'tenant']), validate(createVeh
 router.post('/requests', requireRole(['resident', 'tenant']), validate(createRequestSchema), parkingController.createRequest);
 
 // Security checkpoint
-router.get('/security/verify', requireRole(['security', 'admin', 'super_admin']), validateQuery(verifyVehicleQuerySchema), parkingController.verifyVehicle);
-router.get('/security/slots', requireRole(['security', 'admin', 'super_admin']), validateQuery(slotQuerySchema), parkingController.listSlots);
-router.get('/security/visitor-sessions', requireRole(['security', 'admin', 'super_admin']), validateQuery(visitorSessionQuerySchema), parkingController.listVisitorSessions);
-router.post('/security/visitor-sessions', requireRole(['security', 'admin', 'super_admin']), validate(createVisitorSessionSchema), parkingController.createVisitorSession);
-router.patch('/security/visitor-sessions/:id/release', requireRole(['security', 'admin', 'super_admin']), parkingController.releaseVisitorSession);
+router.get('/security/verify', requireRole(['security']), validateQuery(verifyVehicleQuerySchema), parkingController.verifyVehicle);
+router.get('/security/slots', requireRole(['security']), validateQuery(slotQuerySchema), parkingController.listSecurityVisitorSlots);
+router.get('/security/visitor-sessions', requireRole(['security']), validateQuery(visitorSessionQuerySchema), parkingController.listVisitorSessions);
+router.post('/security/visitor-sessions', requireRole(['security']), validate(createVisitorSessionSchema), parkingController.createVisitorSession);
+router.patch('/security/visitor-sessions/:id/release', requireRole(['security']), parkingController.releaseVisitorSession);
 
 // Admin parking management
 router.get('/admin/overview', requireRole(['admin', 'super_admin']), parkingController.getAdminOverview);

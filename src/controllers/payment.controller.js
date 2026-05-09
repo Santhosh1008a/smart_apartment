@@ -119,7 +119,7 @@ exports.createOrder = async (req, res, next) => {
     const options = {
       amount: amountInPaisa,
       currency: 'INR',
-      receipt: `receipt_${invoice_id}`
+      receipt: invoice_id.substring(0, 40)
     };
 
     let order;
@@ -162,6 +162,12 @@ exports.createOrder = async (req, res, next) => {
 
   } catch (err) {
     if (client) await client.query('ROLLBACK');
+    
+    if (err.statusCode && err.error) {
+       console.error("Razorpay Error:", err.error);
+       return next(new AppError(err.error.description || 'Payment gateway error', 400));
+    }
+    
     next(err);
   } finally {
     if (client) client.release();
@@ -173,15 +179,6 @@ exports.verifyPayment = async (req, res, next) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const user_id = req.user.id;
-
-    // --- Idempotency: check if already processed ---
-    const dupeCheck = await query(
-      `SELECT id FROM razorpay_txns WHERE rz_payment_id = $1`,
-      [razorpay_payment_id]
-    );
-    if (dupeCheck.rows.length > 0) {
-      return res.status(200).json({ success: true, message: 'Payment already verified' });
-    }
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 
@@ -196,30 +193,44 @@ exports.verifyPayment = async (req, res, next) => {
       return next(new AppError('Payment verification failed', 400));
     }
 
-    // Verify invoice ownership
-    const txnCheck = await query(
-      `SELECT p.user_id FROM razorpay_txns rt 
-       JOIN payments p ON rt.payment_id = p.id 
-       WHERE rt.rz_order_id = $1`, 
-       [razorpay_order_id]
-    );
-    if (txnCheck.rows.length === 0 || txnCheck.rows[0].user_id !== user_id) {
-       return next(new AppError('Payment not found or unauthorized', 403));
-    }
-
     client = await getClient();
     await client.query('BEGIN');
 
-    // Update razorpay_txn
-    const txnUpdate = await client.query(
+    // 1. Lock the transaction row to prevent race conditions
+    const txnCheck = await client.query(
+      `SELECT rt.id, rt.rz_payment_id, p.user_id, p.id as payment_id
+       FROM razorpay_txns rt 
+       JOIN payments p ON rt.payment_id = p.id 
+       WHERE rt.rz_order_id = $1 FOR UPDATE`, 
+       [razorpay_order_id]
+    );
+
+    if (txnCheck.rows.length === 0) {
+       await client.query('ROLLBACK');
+       return next(new AppError('Payment not found', 404));
+    }
+
+    if (txnCheck.rows[0].user_id !== user_id) {
+       await client.query('ROLLBACK');
+       return next(new AppError('Payment not found or unauthorized', 403));
+    }
+
+    // 2. Idempotency check inside the lock
+    if (txnCheck.rows[0].rz_payment_id) {
+       await client.query('ROLLBACK');
+       return res.status(200).json({ success: true, message: 'Payment already verified' });
+    }
+
+    const payment_id = txnCheck.rows[0].payment_id;
+
+    // 3. Update razorpay_txn
+    await client.query(
       `UPDATE razorpay_txns SET rz_payment_id = $1, rz_signature = $2 
-       WHERE rz_order_id = $3 RETURNING payment_id`,
+       WHERE rz_order_id = $3`,
       [razorpay_payment_id, razorpay_signature, razorpay_order_id]
     );
 
-    const payment_id = txnUpdate.rows[0].payment_id;
-
-    // Update payments
+    // 4. Update payments
     const paymentUpdate = await client.query(
       `UPDATE payments SET status = 'captured', paid_at = now() WHERE id = $1 RETURNING invoice_id`,
       [payment_id]
@@ -227,7 +238,7 @@ exports.verifyPayment = async (req, res, next) => {
 
     const invoice_id = paymentUpdate.rows[0].invoice_id;
 
-    // Update invoice
+    // 5. Update invoice
     await client.query(
       `UPDATE invoices SET status = 'paid' WHERE id = $1`,
       [invoice_id]
@@ -237,7 +248,13 @@ exports.verifyPayment = async (req, res, next) => {
 
     res.status(200).json({ success: true, message: 'Payment verified successfully' });
   } catch (err) {
-    if (client) await client.query('ROLLBACK');
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (rbErr) { /* ignore */ }
+    }
+    // Gracefully handle duplicate payment ID constraint
+    if (err.code === '23505') {
+       return res.status(200).json({ success: true, message: 'Payment already verified (concurrent)' });
+    }
     next(err);
   } finally {
     if (client) client.release();

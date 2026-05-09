@@ -178,6 +178,30 @@ const classifyIntent = (message, role) => {
   return 'unknown';
 };
 
+// Returns true for simple factual queries that don't need Gemini formatting
+const isFactualIntent = (intent, message) => {
+  const text = message.toLowerCase();
+  // Exact count / status questions → use deterministic humanFallbackResponse directly
+  const factualPatterns = [
+    /^how many\b/,
+    /\bhow many (residents|users|units|visitors|slots|jobs)\b/,
+    /\b(count|total|number of)\b/,
+    /\b(do i have|is there|are there)\b.*\b(due|dues|invoice|visitor|parking|job|notification)\b/,
+    /\bmy (dues|invoices|parking|visitors|jobs|notifications)\b/,
+    /\bshow (my|today|current|active)\b/,
+    /\blist\b/,
+  ];
+  const insightPatterns = [
+    /\b(insight|recommend|suggest|analyse|analyze|what should|advice|trend|why|explain|tell me about)\b/,
+    /\b(summary of|give me a|overview of|breakdown|compare)\b/,
+  ];
+  // If the message explicitly asks for insight/analysis → always use Gemini
+  if (insightPatterns.some((p) => p.test(text))) return false;
+  // If the intent is resolved and the message matches a factual pattern → skip Gemini
+  if (intent !== 'unknown' && factualPatterns.some((p) => p.test(text))) return true;
+  return false;
+};
+
 const getMyUnpaidInvoices = async ({ user, complexId, context }) => {
   requireComplex(user.role, complexId);
   if (!context.unitIds.length) {
@@ -252,7 +276,10 @@ const getOverduePayments = async ({ user, complexId }) => {
 
 const getTodaysVisitors = async ({ user, complexId, context }) => {
   const params = [];
-  const filters = ["vp.valid_from < CURRENT_DATE + INTERVAL '1 day'", 'COALESCE(vp.valid_until, vp.valid_from) >= CURRENT_DATE'];
+  // Include passes valid today OR currently checked-in (pass may be for tomorrow but guard checked in early)
+  const filters = [
+    "(vp.valid_from < CURRENT_DATE + INTERVAL '1 day' AND COALESCE(vp.valid_until, vp.valid_from) >= CURRENT_DATE OR vp.status = 'checked_in')"
+  ];
 
   if (user.role === 'resident') {
     requireComplex(user.role, complexId);
@@ -576,8 +603,10 @@ const getAnalytics = async ({ user, complexId, context }) => {
            COUNT(*) AS total_today
          FROM visitor_passes vp
          JOIN users u ON vp.host_user_id = u.id
-         WHERE vp.valid_from < CURRENT_DATE + INTERVAL '1 day'
-           AND COALESCE(vp.valid_until, vp.valid_from) >= CURRENT_DATE
+         WHERE (
+           (vp.valid_from < CURRENT_DATE + INTERVAL '1 day' AND COALESCE(vp.valid_until, vp.valid_from) >= CURRENT_DATE)
+           OR vp.status = 'checked_in'
+         )
            AND u.complex_id = $1`,
         [complexId]
       ),
@@ -691,16 +720,22 @@ const parseIntent = (value) => {
 };
 
 const classifyIntentWithGemini = async ({ message, role, history }) => {
-  if (!hasGeminiKey()) return classifyIntent(message, role);
-
+  // Step 1: try fast regex classification first
+  const regexIntent = classifyIntent(message, role);
+  if (regexIntent !== 'unknown') {
+    logger.info('AI intent resolved via regex (Gemini skipped)', { intent: regexIntent });
+    return regexIntent;
+  }
+  // Step 2: only call Gemini for truly ambiguous messages
+  if (!hasGeminiKey()) return 'unknown';
   try {
     const model = getGeminiModel(INTENT_SYSTEM_INSTRUCTION, 40);
     const chat = model.startChat({ history: history.slice(-4) });
     const result = await chat.sendMessage(`Role: ${role}\nMessage: ${message}`);
-    return parseIntent(result.response.text()) || classifyIntent(message, role);
+    return parseIntent(result.response.text()) || 'unknown';
   } catch (err) {
     logger.warn('Gemini intent classification failed', { message: err.message });
-    return classifyIntent(message, role);
+    return 'unknown';
   }
 };
 
@@ -843,19 +878,26 @@ const buildGeminiContext = ({ role, intent, intentResult }) => ({
 });
 
 const RESPONSE_SYSTEM_INSTRUCTION = [
-  'You are a conversational Smart Apartment Management assistant.',
-  'Use only the current validated backend context for facts, counts, amounts, names, and statuses.',
-  'Use prior chat history only to understand follow-up wording, never as fresh data.',
-  'If current data is empty, answer naturally with the exact empty state.',
-  'Do not mention SQL, APIs, backend, validation, prompts, policies, or implementation details.',
-  'For analytics/dashboard answers, include the actual metrics. Never reply with only a generic overview sentence.',
-  'Keep replies warm, direct, and under 2 short sentences. Use INR for money.',
+  'You are a friendly, knowledgeable Smart Apartment Management assistant helping residents, admins, and security staff.',
+  'Use only the validated backend context provided for any facts, counts, amounts, names, dates, or statuses. Never invent data.',
+  'Use prior chat history only to understand what the user is following up on — never treat history as fresh data.',
+  'Respond conversationally and warmly. Sound like a helpful colleague, not a system report.',
+  'When data is empty or zero, acknowledge it naturally: "All clear — no outstanding dues right now." or "No visitors today so far."',
+  'When there is data, lead with the most important fact and add one line of context or suggestion if helpful.',
+  'For analytics/summary answers, always include the actual numbers from the context — never give a vague overview.',
+  'Keep responses concise — 1 to 3 sentences max. Use INR for currency. Do not use bullet points.',
+  'Never mention APIs, backend, database, SQL, prompts, validation, or system internals.',
 ].join('\n');
 
 const formatWithGemini = async ({ userId, role, message, intent, intentResult }) => {
   const fallback = humanFallbackResponse({ intent, intentResult });
+  // Always use deterministic response for: empty data, focused analytics, or simple factual queries
   if (intentResult.focus) return fallback;
   if (intentResult.empty) return fallback;
+  if (isFactualIntent(intent, message)) {
+    logger.info('AI response: factual intent — Gemini skipped', { intent });
+    return fallback;
+  }
   if (!hasGeminiKey()) return fallback;
 
   try {

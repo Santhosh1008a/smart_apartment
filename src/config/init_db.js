@@ -124,8 +124,8 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE TABLE IF NOT EXISTS razorpay_txns (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     payment_id UUID REFERENCES payments(id),
-    rz_order_id VARCHAR(40) NOT NULL,
-    rz_payment_id VARCHAR(40),
+    rz_order_id VARCHAR(40) NOT NULL UNIQUE,
+    rz_payment_id VARCHAR(40) UNIQUE,
     rz_signature TEXT,
     raw_webhook JSONB,
     event VARCHAR(60),

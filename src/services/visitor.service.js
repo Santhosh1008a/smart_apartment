@@ -67,7 +67,7 @@ class VisitorService {
     }
   }
 
-  async verifyVisitorQR(token, userRole) {
+  async verifyVisitorQR(token, userRole, complexId) {
     if (!token) throw new AppError('QR Token is required', 400);
     
     if (!['security', 'admin', 'super_admin'].includes(userRole)) {
@@ -85,7 +85,8 @@ class VisitorService {
       throw new AppError('QR Code has already been used maximum times', 400);
     }
 
-    const pass = await visitorRepo.findPassById(qr.visitor_pass_id);
+    const pass = await visitorRepo.findPassByIdForComplex(qr.visitor_pass_id, complexId);
+    if (!pass) throw new AppError('Visitor pass not found in your society', 404);
     if (pass.status === 'cancelled') {
         throw new AppError('Visitor pass was cancelled', 400);
     }
@@ -93,7 +94,11 @@ class VisitorService {
     const client = await getClient();
     try {
         await client.query('BEGIN');
-        await visitorRepo.checkInVisitor(client, pass.id);
+        const checkedIn = await visitorRepo.checkInVisitor(client, pass.id, complexId);
+        if (!checkedIn) {
+          await client.query('ROLLBACK');
+          throw new AppError('Visitor pass cannot be checked in', 400);
+        }
         await visitorRepo.incrementQRScan(client, qr.id);
         await client.query('COMMIT');
     } catch(err) {

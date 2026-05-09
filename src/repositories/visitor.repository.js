@@ -29,11 +29,43 @@ class VisitorRepository {
     return res.rows[0];
   }
 
-  async checkInVisitor(client, pass_id) {
-    await client.query(
-      `UPDATE visitor_passes SET status = 'checked_in', checked_in_at = now() WHERE id = $1`,
-      [pass_id]
+  async findPassByIdForComplex(pass_id, complexId) {
+    const res = await query(
+      `SELECT vp.*
+       FROM visitor_passes vp
+       JOIN users u ON vp.host_user_id = u.id
+       JOIN user_units uu ON uu.user_id = u.id AND uu.moved_out_at IS NULL
+       JOIN units un ON uu.unit_id = un.id
+       JOIN buildings b ON un.building_id = b.id
+       WHERE vp.id = $1
+         AND (b.complex_id = $2 OR $2 IS NULL)
+       LIMIT 1`,
+      [pass_id, complexId]
     );
+    return res.rows[0];
+  }
+
+  async checkInVisitor(client, pass_id, complexId) {
+    const res = await client.query(
+      `UPDATE visitor_passes vp
+       SET status = 'checked_in', checked_in_at = now()
+       WHERE vp.id = $1
+         AND vp.status = 'pending'
+         AND (
+           $2 IS NULL
+           OR EXISTS (
+             SELECT 1
+             FROM users u
+             JOIN user_units uu ON uu.user_id = u.id AND uu.moved_out_at IS NULL
+             JOIN units un ON uu.unit_id = un.id
+             JOIN buildings b ON un.building_id = b.id
+             WHERE u.id = vp.host_user_id AND b.complex_id = $2
+           )
+         )
+       RETURNING vp.id`,
+      [pass_id, complexId]
+    );
+    return res.rows[0];
   }
 
   async incrementQRScan(client, qr_id) {
