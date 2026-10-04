@@ -4,8 +4,8 @@ import { Button } from "../../components/ui/Button"
 import { Input } from "../../components/ui/Input"
 import { useAuthStore } from "../../store/useAuthStore"
 import { loginUser } from "../../api/auth"
-import { getRoleBasedPath } from "../../App"
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle } from "lucide-react"
+import { getRoleBasedPath } from "../../utils/rolePath"
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle, Info } from "lucide-react"
 
 export default function Login() {
   const [email, setEmail] = useState("")
@@ -13,6 +13,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const login = useAuthStore((state) => state.login)
+  const isAuthReady = useAuthStore((state) => state.isAuthReady)
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -22,7 +23,7 @@ export default function Login() {
     
     try {
       const res = await loginUser(email, password)
-      login(res.user, res.accessToken, res.refreshToken)
+      login(res.user, res.accessToken)
       navigate(getRoleBasedPath(res.user.role))
     } catch (err) {
       const msg = err.response?.data?.message || "Login failed. Please try again."
@@ -80,30 +81,16 @@ export default function Login() {
           </div>
         </div>
         
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <input
-              id="remember-me"
-              name="remember-me"
-              type="checkbox"
-              className="h-4 w-4 text-primary focus:ring-primary border-border rounded"
-            />
-            <label htmlFor="remember-me" className="ml-2 pl-1 block text-sm text-foreground">
-              Remember me
-            </label>
-          </div>
-
-          <div className="text-sm">
-            <a href="#" className="font-medium text-primary hover:text-primary-hover">
-              Forgot password?
-            </a>
-          </div>
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>Password recovery is not available because no verified email delivery service is configured. Contact your apartment administrator for help.</p>
         </div>
       </div>
 
+      {!isAuthReady && <p role="status" className="text-center text-xs text-gray-500">Checking existing session…</p>}
       <Button
         type="submit"
-        disabled={isLoading}
+        disabled={isLoading || !isAuthReady}
         className="w-full h-11 text-base group"
       >
         {isLoading ? (

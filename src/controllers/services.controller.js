@@ -1,6 +1,5 @@
 const { query, getClient } = require('../config/db');
 const { AppError } = require('../middlewares/error.middleware');
-const { sendSMS, sendEmail } = require('../utils/notifications');
 
 // --- EMERGENCY ---
 exports.triggerEmergency = async (req, res, next) => {
@@ -8,6 +7,24 @@ exports.triggerEmergency = async (req, res, next) => {
     const { unit_id, type, severity, description, location_lat, location_lng } = req.body;
     const user_id = req.user.id;
     const complexId = req.complexId;
+
+    if (unit_id) {
+      const unitCheck = await query(
+        `SELECT un.id
+         FROM units un
+         JOIN buildings b ON b.id = un.building_id
+         WHERE un.id = $1
+           AND b.complex_id = $2
+           AND ($3 <> 'resident' OR EXISTS (
+             SELECT 1 FROM user_units uu
+             WHERE uu.unit_id = un.id AND uu.user_id = $4 AND uu.moved_out_at IS NULL
+           ))`,
+        [unit_id, complexId, req.user.role, user_id]
+      );
+      if (unitCheck.rows.length === 0) {
+        return next(new AppError('Unit not found in your complex or not assigned to you', 403));
+      }
+    }
 
     const { rows } = await query(
       `INSERT INTO emergency_alerts (user_id, unit_id, type, severity, description, location_lat, location_lng, status)
@@ -17,14 +34,14 @@ exports.triggerEmergency = async (req, res, next) => {
 
     const alert = rows[0];
 
-    // Emit real-time to the complex room (scoped, not global)
+    // Emergency details are limited to the reporter and authorized complex staff.
     const io = req.app.get('io');
     if (io) {
-      const room = complexId ? `complex:${complexId}` : 'all';
-      io.to(room).emit('emergency_alert', {
+      const payload = {
         ...alert,
-        triggered_by: req.user.full_name || req.user.email
-      });
+      };
+      io.to(`user:${user_id}`).emit('emergency_alert', payload);
+      io.to(`complex:${complexId}:staff`).emit('emergency_alert', payload);
     }
 
     // Notify admins and security in same complex
@@ -65,14 +82,25 @@ exports.resolveEmergency = async (req, res, next) => {
       return next(new AppError("status must be 'resolved' or 'false_alarm'", 400));
     }
 
-    // Only the original reporter or admin/security can resolve
+    // Staff can resolve alerts only within their own complex.
     const { rows } = await query(
-      `UPDATE emergency_alerts
+      `UPDATE emergency_alerts e
        SET status = $1
-       WHERE id = $2
-         AND (user_id = $3 OR $4 IN ('admin','security','super_admin'))
-       RETURNING *`,
-      [status, id, user_id, req.user.role]
+       WHERE e.id = $2
+         AND (
+           e.user_id = $3
+           OR (
+             $4 IN ('admin', 'security')
+             AND $5 IS NOT NULL
+             AND EXISTS (
+               SELECT 1 FROM users reporter
+               WHERE reporter.id = e.user_id AND reporter.complex_id = $5
+             )
+           )
+           OR $4 = 'super_admin'
+         )
+       RETURNING e.*`,
+      [status, id, user_id, req.user.role, req.complexId || null]
     );
 
     if (rows.length === 0) {
@@ -83,8 +111,9 @@ exports.resolveEmergency = async (req, res, next) => {
     const io = req.app.get('io');
     const complexId = req.complexId;
     if (io) {
-      const room = complexId ? `complex:${complexId}` : 'all';
-      io.to(room).emit('emergency_resolved', { id: alert.id, status: alert.status });
+      const payload = { id: alert.id, status: alert.status };
+      io.to(`user:${alert.user_id}`).emit('emergency_resolved', payload);
+      if (complexId) io.to(`complex:${complexId}:staff`).emit('emergency_resolved', payload);
     }
 
     res.status(200).json({ success: true, data: alert });
@@ -105,9 +134,11 @@ exports.listEmergencies = async (req, res, next) => {
     if (req.user.role === 'resident') {
       params.push(req.user.id);
       conditions.push(`e.user_id = $${params.length}`);
+    } else if (['admin', 'security'].includes(req.user.role) && !complexId) {
+      return res.status(200).json({ success: true, data: [] });
     } else if (complexId) {
       params.push(complexId);
-      conditions.push(`(b.complex_id = $${params.length} OR e.unit_id IS NULL)`);
+      conditions.push(`(b.complex_id = $${params.length} OR (e.unit_id IS NULL AND u.complex_id = $${params.length}))`);
     }
 
     if (status) {
@@ -213,7 +244,7 @@ exports.listMyParkingAssignments = async (req, res, next) => {
   try {
     const { complexId } = req;
     const { rows } = await query(
-      `SELECT pa.*, s.slot_number, s.display_name, s.parking_area, s.floor, b.name as building_name 
+      `SELECT pa.*, s.slot_number, s.display_name, s.parking_area, b.name as building_name
        FROM parking_assignments pa
        JOIN parking_slots s ON pa.slot_id = s.id
        LEFT JOIN buildings b ON s.building_id = b.id

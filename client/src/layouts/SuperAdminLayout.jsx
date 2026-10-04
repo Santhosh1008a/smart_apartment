@@ -1,33 +1,43 @@
 import { useState } from "react"
 import { Outlet, NavLink, useNavigate, Link, useLocation } from "react-router-dom"
 import { useAuthStore } from "../store/useAuthStore"
-import { Building2, LayoutDashboard, LogOut, Menu, Settings, X } from "lucide-react"
+import { logoutUser } from "../api/auth"
+import { LayoutDashboard, LogOut, Menu, Settings, X, ChartNoAxesCombined, ShieldCheck } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
 import AIAssistant from "../components/layout/AIAssistant"
+import UserAvatar from "../components/layout/UserAvatar"
+import Logo from "../components/Logo"
 
 export default function SuperAdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
-  const handleLogout = () => { logout(); navigate("/login") }
-  const navigation = [{ name: "Dashboard", href: "/super-admin", icon: LayoutDashboard }]
-  const pageTitle = location.pathname === "/super-admin/profile" ? "Profile & Settings" : "Super Admin Control Center"
+  const handleLogout = async () => { try { await logoutUser() } catch { /* Local logout still succeeds if the API is unavailable. */ } logout(); navigate("/login") }
+  const navigation = [
+    { name: "Dashboard", href: "/super-admin", icon: LayoutDashboard },
+    { name: "Monetization & Analytics", href: "/super-admin/monetization", icon: ChartNoAxesCombined },
+    { name: "Privacy requests", href: "/super-admin/privacy-requests", icon: ShieldCheck },
+  ]
+  const pageTitle = location.pathname === "/super-admin/profile"
+    ? "Profile & Settings"
+    : location.pathname.startsWith("/super-admin/monetization")
+      ? "Monetization & Analytics"
+      : location.pathname.startsWith("/super-admin/privacy-requests")
+        ? "Privacy requests"
+      : "Super Admin Control Center"
 
   return (
     <div className="flex bg-background min-h-screen font-sans">
       {isSidebarOpen && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)} />}
       <div className={cn("fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-auto flex flex-col shadow-xl lg:shadow-none", isSidebarOpen ? "translate-x-0" : "-translate-x-full")}>
-        <div className="flex items-center justify-between h-16 border-b border-border px-4 shrink-0">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md shadow-blue-500/20">
-              <Building2 className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <span className="font-bold text-lg tracking-tight">SmartApt</span>
-              <span className="ml-1.5 text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">Super</span>
-            </div>
+        <div className="flex items-center justify-between h-28 border-b border-border px-4 shrink-0">
+          <div className="flex items-center gap-2">
+            <Link to="/super-admin" onClick={() => setIsSidebarOpen(false)} aria-label="Go to SyncLiving dashboard" className="flex h-full items-center">
+              <Logo className="h-[100px] w-[96px]" />
+            </Link>
+            <span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">Super</span>
           </div>
           <button className="lg:hidden text-gray-400 hover:text-foreground p-1" onClick={() => setIsSidebarOpen(false)}><X className="w-5 h-5" /></button>
         </div>
@@ -42,7 +52,7 @@ export default function SuperAdminLayout() {
         </nav>
         <div className="p-4 border-t border-border mt-auto">
           <Link to="/super-admin/profile" onClick={() => setIsSidebarOpen(false)} className="flex items-center mb-3 px-2 py-2 rounded-lg hover:bg-secondary transition-colors group">
-            <img src={user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id || "super"}`} alt="Avatar" className="w-10 h-10 rounded-full border border-border shadow-sm flex-shrink-0" />
+            <UserAvatar user={user} src={user?.avatar_url} className="h-10 w-10 rounded-full border border-border shadow-sm" />
             <div className="ml-3 truncate flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate group-hover:text-indigo-600 transition-colors">{user?.full_name}</p>
               <p className="text-xs text-indigo-600 dark:text-indigo-400 truncate capitalize font-medium">Super Admin</p>

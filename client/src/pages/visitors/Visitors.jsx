@@ -22,7 +22,7 @@ export default function Visitors() {
   const [isDeleting, setIsDeleting] = useState(null)
 
   // New Pass Form State
-  const [newPass, setNewPass] = useState({ name: "", phone: "", type: "Guest", date: "", time: "" })
+  const [newPass, setNewPass] = useState({ name: "", phone: "", type: "Guest", date: "", time: "", is_overnight: false })
 
   const fetchPasses = async () => {
     try {
@@ -31,7 +31,7 @@ export default function Visitors() {
       if (res.success) {
         setPasses(res.data)
       }
-    } catch (err) {
+    } catch {
       toast.error("Failed to load visitor passes")
     } finally {
       setIsLoading(false)
@@ -60,21 +60,18 @@ export default function Visitors() {
     try {
       // Create valid_from and valid_until
       const validFrom = new Date(`${newPass.date}T${newPass.time}:00`);
-      // Default to 12 hours validity from generation
-      const validUntil = new Date(validFrom.getTime() + 12 * 60 * 60 * 1000);
-
       const res = await createVisitorPass({
         visitor_name: newPass.name,
         visitor_phone: newPass.phone || null,
         purpose: newPass.type,
         valid_from: validFrom.toISOString(),
-        valid_until: validUntil.toISOString()
+        is_overnight: newPass.is_overnight
       })
 
       if (res.success) {
         toast.success("Visitor pass generated successfully!")
         setIsCreateOpen(false)
-        setNewPass({ name: "", phone: "", type: "Guest", date: "", time: "" })
+        setNewPass({ name: "", phone: "", type: "Guest", date: "", time: "", is_overnight: false })
         fetchPasses()
       }
     } catch (err) {
@@ -102,7 +99,9 @@ export default function Visitors() {
 
   const getStatusBadge = (status) => {
     switch(status) {
-      case 'checked_in': return <Badge variant="success">Checked In</Badge>
+      case 'checked_in': return <Badge variant="success">Checkout Pending</Badge>
+      case 'overdue': return <Badge variant="destructive">Overdue Checkout</Badge>
+      case 'checked_out': return <Badge variant="outline" className="text-gray-500 border-gray-300">Completed</Badge>
       case 'pending': return <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-400">Pending</Badge>
       case 'expired': return <Badge variant="outline" className="text-gray-500 border-gray-300">Expired</Badge>
       case 'completed': return <Badge variant="outline" className="text-gray-500 border-gray-300">Completed</Badge>
@@ -254,6 +253,16 @@ export default function Visitors() {
               <label className="block text-sm font-medium mb-1">Time</label>
               <Input required disabled={isCreating} type="time" value={newPass.time} onChange={e => setNewPass({...newPass, time: e.target.value})} className="h-11" />
             </div>
+          </div>
+          <div className="flex items-center space-x-2 mt-2">
+            <input
+              type="checkbox"
+              id="overnight"
+              checked={newPass.is_overnight}
+              onChange={e => setNewPass({...newPass, is_overnight: e.target.checked})}
+              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            <label htmlFor="overnight" className="text-sm font-medium text-foreground">Allow Overnight Stay (Valid for 24 hours)</label>
           </div>
           <div className="pt-6 flex justify-end space-x-3 border-t border-border/50 mt-6">
             <Button type="button" variant="ghost" onClick={() => setIsCreateOpen(false)} disabled={isCreating}>Cancel</Button>

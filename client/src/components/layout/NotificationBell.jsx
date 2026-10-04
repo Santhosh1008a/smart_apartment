@@ -8,7 +8,7 @@ import { io } from "socket.io-client"
 export default function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef(null)
-  const { user } = useAuthStore()
+  const { user, accessToken } = useAuthStore()
   const { notifications, unreadCount, fetchNotifications, fetchUnreadCount, markAsRead, markAllAsRead, addRealtimeNotification } = useNotificationStore()
 
   // Click outside to close
@@ -24,21 +24,14 @@ export default function NotificationBell() {
 
   // Initial fetch and WebSocket connection
   useEffect(() => {
-    if (!user) return
+    if (!user || !accessToken) return
 
     fetchUnreadCount()
 
     // Setup Socket.IO for real-time notifications
     const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
       withCredentials: true,
-    })
-
-    socket.on("connect", () => {
-      socket.emit("join_user_room", user.id)
-      // Also join complex room for society-wide broadcasts (emergencies)
-      if (user.complex_id) {
-        socket.emit("join_complex_room", user.complex_id)
-      }
+      auth: { token: accessToken },
     })
 
     socket.on("notification", (notification) => {
@@ -46,12 +39,12 @@ export default function NotificationBell() {
     })
 
     return () => socket.disconnect()
-  }, [user])
+  }, [user, accessToken, addRealtimeNotification, fetchUnreadCount])
 
   // Fetch full list when dropdown opens
   useEffect(() => {
     if (isOpen) fetchNotifications()
-  }, [isOpen])
+  }, [isOpen, fetchNotifications])
 
   const getIcon = (type) => {
     switch (type) {

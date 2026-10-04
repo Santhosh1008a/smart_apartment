@@ -15,14 +15,11 @@ const EMERGENCY_TYPES = [
 ]
 
 const EMERGENCY_CONTACTS = [
-  { name: "Building Security (Main Gate)", phone: "+91 98765 43210" },
-  { name: "City Police Station",           phone: "100" },
-  { name: "City Hospital Ambulance",       phone: "108" },
-  { name: "Fire Department",               phone: "101" },
+  { name: "India Emergency Response Support System", phone: "112" },
 ]
 
 export default function Emergency() {
-  const { user } = useAuthStore()
+  const { user, accessToken } = useAuthStore()
   const [isTriggering, setIsTriggering] = useState(false)
   const [resolvingId, setResolvingId]   = useState(null)
   const [activeAlerts, setActiveAlerts] = useState([])
@@ -46,13 +43,11 @@ export default function Emergency() {
     fetchAlerts()
 
     // Socket.IO for real-time emergency sync
-    const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", { withCredentials: true })
-    socketRef.current = socket
-
-    socket.on("connect", () => {
-      if (user?.id) socket.emit("join_user_room", user.id)
-      if (user?.complex_id) socket.emit("join_complex_room", user.complex_id)
+    const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
+      withCredentials: true,
+      auth: { token: accessToken },
     })
+    socketRef.current = socket
 
     // New emergency triggered (by me or someone in same complex)
     socket.on("emergency_alert", (alert) => {
@@ -70,7 +65,7 @@ export default function Emergency() {
     })
 
     return () => socket.disconnect()
-  }, [user])
+  }, [user?.id, accessToken])
 
   const handleSOS = async (type) => {
     if (isTriggering) return
@@ -84,7 +79,7 @@ export default function Emergency() {
         description: `${type} triggered from resident app`,
       })
       if (res.success) {
-        toast.error(`🚨 ${type} alert sent! Help is on the way.`, { duration: 5000 })
+        toast.error(`🚨 ${type} alert sent to your community staff. For emergency services, call 112.`, { duration: 7000 })
         // The socket event will add it to activeAlerts
       }
     } catch (err) {
@@ -145,7 +140,7 @@ export default function Emergency() {
             </Badge>
           </div>
           <p className="mt-4 text-sm text-red-800 dark:text-red-200 bg-red-100/50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200/50 dark:border-red-800/50">
-            Security and emergency contacts have been notified. Please stay calm and remain in a safe location. Help is on the way.
+            Your community staff have been notified through SyncLiving. For emergency services, call 112.
           </p>
           {/* Only the reporter can cancel */}
           {alert.user_id === user?.id && (
@@ -192,10 +187,11 @@ export default function Emergency() {
         <CardHeader className="bg-secondary/30 border-b border-border/50 pb-4">
           <CardTitle className="text-lg flex items-center">
             <PhoneCall className="w-5 h-5 mr-2 text-primary" />
-            Important Contacts
+            Emergency Services
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          <p className="px-5 pt-4 text-sm text-gray-500">For police, fire, ambulance, and other emergencies in India, call 112. SyncLiving alerts notify your community staff; they do not contact emergency services.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
             {EMERGENCY_CONTACTS.map((contact, i) => (
               <div key={i} className={`p-5 flex justify-between items-center hover:bg-secondary/20 transition-colors ${i > 1 ? 'border-t border-border' : ''}`}>

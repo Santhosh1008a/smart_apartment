@@ -19,7 +19,7 @@ export default function AdminBuildings() {
       setIsLoading(true)
       const res = await listBuildings()
       if (res.success) setBuildings(res.data)
-    } catch (err) {
+    } catch {
       toast.error("Failed to load buildings")
     } finally {
       setIsLoading(false)

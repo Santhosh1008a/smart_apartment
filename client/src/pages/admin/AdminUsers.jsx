@@ -92,8 +92,6 @@ export default function AdminUsers() {
     }
   }
 
-  const selectedRoleConfig = getRoleConfig(form.role)
-
   return (
     <div className="space-y-6">
       <div>

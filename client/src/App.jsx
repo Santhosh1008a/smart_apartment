@@ -1,94 +1,123 @@
-import { useEffect } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { useAuthStore } from "./store/useAuthStore"
-import { getMe } from "./api/auth"
+import { getMe, refreshSession } from "./api/auth"
 
-import AuthLayout from "./layouts/AuthLayout"
-import Login from "./pages/auth/Login"
-import Register from "./pages/auth/Register"
+const AuthLayout = lazy(() => import("./layouts/AuthLayout"))
+const Login = lazy(() => import("./pages/auth/Login"))
+const Register = lazy(() => import("./pages/auth/Register"))
 
-import MainLayout from "./layouts/MainLayout"
-import Dashboard from "./pages/dashboard/Dashboard"
-import Visitors from "./pages/visitors/Visitors"
-import Payments from "./pages/payments/Payments"
-import Vendors from "./pages/vendors/Vendors"
-import Parking from "./pages/parking/Parking"
-import Emergency from "./pages/emergency/Emergency"
+const MainLayout = lazy(() => import("./layouts/MainLayout"))
+const Dashboard = lazy(() => import("./pages/dashboard/Dashboard"))
+const Visitors = lazy(() => import("./pages/visitors/Visitors"))
+const Payments = lazy(() => import("./pages/payments/Payments"))
+const Vendors = lazy(() => import("./pages/vendors/Vendors"))
+const Parking = lazy(() => import("./pages/parking/Parking"))
+const Emergency = lazy(() => import("./pages/emergency/Emergency"))
 
-import AdminLayout from "./layouts/AdminLayout"
-import AdminDashboard from "./pages/admin/AdminDashboard"
-import AdminInvoices from "./pages/admin/AdminInvoices"
-import AdminUsers from "./pages/admin/AdminUsers"
-import AdminBuildings from "./pages/admin/AdminBuildings"
-import AdminUnits from "./pages/admin/AdminUnits"
-import AdminVendorRequests from "./pages/admin/AdminVendorRequests"
-import AdminParking from "./pages/admin/AdminParking"
+const AdminLayout = lazy(() => import("./layouts/AdminLayout"))
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"))
+const AdminInvoices = lazy(() => import("./pages/admin/AdminInvoices"))
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"))
+const AdminBuildings = lazy(() => import("./pages/admin/AdminBuildings"))
+const AdminUnits = lazy(() => import("./pages/admin/AdminUnits"))
+const AdminVendorRequests = lazy(() => import("./pages/admin/AdminVendorRequests"))
+const AdminParking = lazy(() => import("./pages/admin/AdminParking"))
 
-import SecurityLayout from "./layouts/SecurityLayout"
-import SecurityDashboard from "./pages/security/SecurityDashboard"
-import GuestVehicleParking from "./pages/security/GuestVehicleParking"
+const SecurityLayout = lazy(() => import("./layouts/SecurityLayout"))
+const SecurityDashboard = lazy(() => import("./pages/security/SecurityDashboard"))
+const GuestVehicleParking = lazy(() => import("./pages/security/GuestVehicleParking"))
 
-import VendorLayout from "./layouts/VendorLayout"
-import VendorDashboard from "./pages/vendor/VendorDashboard"
+const VendorLayout = lazy(() => import("./layouts/VendorLayout"))
+const VendorDashboard = lazy(() => import("./pages/vendor/VendorDashboard"))
 
-import SuperAdminLayout from "./layouts/SuperAdminLayout"
-import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard"
+const SuperAdminLayout = lazy(() => import("./layouts/SuperAdminLayout"))
+const SuperAdminDashboard = lazy(() => import("./pages/super-admin/SuperAdminDashboard"))
+const MonetizationAnalytics = lazy(() => import("./pages/super-admin/MonetizationAnalytics"))
 
-import ProfileSettings from "./pages/profile/ProfileSettings"
+const ProfileSettings = lazy(() => import("./pages/profile/ProfileSettings"))
+const LegalPage = lazy(() => import("./pages/legal/LegalPage"))
+const PrivacyRequestInbox = lazy(() => import("./pages/super-admin/PrivacyRequestInbox"))
+import LegalFooter from "./components/layout/LegalFooter"
+import { getRoleBasedPath } from "./utils/rolePath"
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const isAuthReady = useAuthStore((state) => state.isAuthReady)
+  const user = useAuthStore((state) => state.user)
+  if (!isAuthReady) return <div className="min-h-screen grid place-items-center text-sm text-gray-500">Checking session…</div>
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!['resident', 'tenant'].includes(user?.role)) return <Navigate to={getRoleBasedPath(user?.role)} replace />
   return children
 }
 
 // Role-Restricted Route Wrapper
 const RoleProtectedRoute = ({ allowedRoles, children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const isAuthReady = useAuthStore((state) => state.isAuthReady)
   const user = useAuthStore((state) => state.user)
 
+  if (!isAuthReady) return <div className="min-h-screen grid place-items-center text-sm text-gray-500">Checking session…</div>
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (!allowedRoles.includes(user?.role)) return <Navigate to="/" replace />
+  if (!allowedRoles.includes(user?.role)) return <Navigate to={getRoleBasedPath(user?.role)} replace />
   return children
 }
 
-// Redirect after login based on role
-export const getRoleBasedPath = (role) => {
-  switch (role) {
-    case "admin":
-      return "/admin"
-    case "super_admin":
-      return "/super-admin"
-    case "security":
-      return "/security"
-    case "vendor":
-      return "/vendor"
-    default:
-      return "/"
-  }
-}
-
 function App() {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const setUser = useAuthStore((state) => state.setUser)
   const setContext = useAuthStore((state) => state.setContext)
+  const setToken = useAuthStore((state) => state.setToken)
+  const setAuthReady = useAuthStore((state) => state.setAuthReady)
+  const setAuthenticated = useAuthStore((state) => state.setAuthenticated)
 
-  // Hydrate user data (including complex_name) on mount
+  // Restore authentication only from the server-verified HttpOnly refresh
+  // cookie, and remove profile/context data written by older app versions.
   useEffect(() => {
-    if (isAuthenticated) {
-      getMe().then((res) => {
-        if (res.success) {
+    let active = true
+    try {
+      ['user', 'accessToken', 'refreshToken', 'complex', 'building', 'unit', 'parking', 'roleContext']
+        .forEach((key) => localStorage.removeItem(key))
+    } catch {
+      // Storage may be unavailable in restricted browser contexts.
+    }
+    const hydrateSession = async () => {
+      try {
+        const refresh = await refreshSession()
+        if (!refresh.success || !refresh.accessToken) {
+          useAuthStore.getState().logout()
+          return
+        }
+        if (!active) return
+        setToken(refresh.accessToken)
+        const res = await getMe()
+        if (active && res.success) {
           setUser(res.data)
           setContext(res.complex || null, res.building || null, res.unit || null, res.parking || null, res.roleContext || null)
+          setAuthenticated(true)
         }
-      }).catch(() => {})
+      } catch {
+        if (active) useAuthStore.getState().logout()
+      } finally {
+        if (active) setAuthReady(true)
+      }
     }
-  }, [isAuthenticated, setUser, setContext])
+    hydrateSession()
+    return () => { active = false }
+  }, [setUser, setContext, setToken, setAuthReady, setAuthenticated])
 
   return (
     <BrowserRouter>
+      <Suspense fallback={<div className="min-h-screen grid place-items-center text-sm text-gray-500">Loading page…</div>}>
       <Routes>
+        {/* Public legal disclosures and privacy-request portal */}
+        <Route path="/privacy" element={<LegalPage page="privacy" />} />
+        <Route path="/terms" element={<LegalPage page="terms" />} />
+        <Route path="/cookies" element={<LegalPage page="cookies" />} />
+        <Route path="/contact" element={<LegalPage page="contact" />} />
+        <Route path="/data-requests" element={<LegalPage page="data-requests" />} />
+        <Route path="/billing-policy" element={<LegalPage page="billing" />} />
+
         {/* Public Auth Routes */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<Login />} />
@@ -168,12 +197,16 @@ function App() {
           }
         >
           <Route index element={<SuperAdminDashboard />} />
+          <Route path="monetization" element={<MonetizationAnalytics />} />
+          <Route path="privacy-requests" element={<PrivacyRequestInbox />} />
           <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
+      <LegalFooter />
     </BrowserRouter>
   )
 }

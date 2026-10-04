@@ -7,9 +7,9 @@ const auditLogger = winston.createLogger({
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.json()
   ),
-  transports: [
-    new winston.transports.File({ filename: path.join(__dirname, '../../logs/audit.log') })
-  ]
+  transports: process.env.NODE_ENV === 'production'
+    ? [new winston.transports.Console()]
+    : [new winston.transports.File({ filename: path.join(__dirname, '../../logs/audit.log') })],
 });
 
 module.exports = auditLogger;

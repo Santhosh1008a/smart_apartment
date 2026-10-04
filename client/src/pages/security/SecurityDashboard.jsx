@@ -2,8 +2,8 @@ import { useState, useEffect } from "react"
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Card"
 import { Badge } from "../../components/ui/Badge"
 import { Button } from "../../components/ui/Button"
-import { getVisitorsToday, checkinVisitor, checkoutVisitorSecurity } from "../../api/security"
-import { UserCheck, UserX, Clock, Loader2, RefreshCw, Shield } from "lucide-react"
+import { getVisitorsToday, checkinVisitor, checkoutVisitorSecurity, resolveOverdueVisitor, extendVisitorValidity } from "../../api/security"
+import { UserCheck, UserX, Clock, Loader2, RefreshCw, Shield, AlertTriangle, LogOut } from "lucide-react"
 import toast from "react-hot-toast"
 
 export default function SecurityDashboard() {
@@ -55,11 +55,43 @@ export default function SecurityDashboard() {
     }
   }
 
+  const handleResolveOverdue = async (id) => {
+    setActionLoading(id)
+    try {
+      const res = await resolveOverdueVisitor(id)
+      if (res.success) {
+        toast.success("Overdue visitor forcefully checked out!")
+        fetchVisitors()
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Resolve failed")
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleExtend = async (id) => {
+    setActionLoading(id)
+    try {
+      const res = await extendVisitorValidity(id, 24)
+      if (res.success) {
+        toast.success("Visitor validity extended by 24 hours!")
+        fetchVisitors()
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Extend failed")
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   const statusBadge = (status) => {
     switch (status) {
       case "pending": return <Badge variant="secondary" className="capitalize">Expected</Badge>
       case "checked_in": return <Badge variant="success" className="capitalize">Inside</Badge>
+      case "overdue": return <Badge variant="destructive" className="capitalize">Overdue</Badge>
       case "checked_out": return <Badge variant="outline" className="capitalize">Left</Badge>
+      case "expired": return <Badge variant="outline" className="capitalize">Expired</Badge>
       case "cancelled": return <Badge variant="destructive" className="capitalize">Cancelled</Badge>
       default: return <Badge variant="outline">{status}</Badge>
     }
@@ -68,8 +100,14 @@ export default function SecurityDashboard() {
   const counts = {
     expected: visitors.filter(v => v.status === 'pending').length,
     inside: visitors.filter(v => v.status === 'checked_in').length,
-    left: visitors.filter(v => v.status === 'checked_out').length,
+    overdue: visitors.filter(v => v.status === 'overdue').length,
+    left: visitors.filter(v => ['checked_out', 'cancelled', 'expired'].includes(v.status)).length,
   }
+
+  const expectedList = visitors.filter(v => v.status === 'pending')
+  const activeList = visitors.filter(v => v.status === 'checked_in')
+  const overdueList = visitors.filter(v => v.status === 'overdue')
+  const historyList = visitors.filter(v => ['checked_out', 'expired', 'cancelled'].includes(v.status))
 
   if (isLoading) {
     return (
@@ -131,67 +169,121 @@ export default function SecurityDashboard() {
         </Card>
       </div>
 
-      {/* Visitor List */}
+      {/* Overdue List */}
+      {overdueList.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-bold text-red-600 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" /> Overdue Visitors
+          </h3>
+          {overdueList.map(visitor => renderVisitorCard(visitor))}
+        </div>
+      )}
+
+      {/* Active List */}
       <div className="space-y-3">
-        {visitors.length === 0 ? (
-          <Card className="border-none shadow-md">
-            <CardContent className="py-12 text-center text-gray-500">
-              <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">No visitors expected today</p>
-            </CardContent>
-          </Card>
-        ) : (
-          visitors.map(visitor => (
-            <Card key={visitor.id} className="animate-in fade-in slide-in-from-bottom-2 border-none shadow-md overflow-hidden">
-              <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3 sm:gap-4">
-                  <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center font-bold text-lg">
-                    {visitor.visitor_name?.charAt(0)?.toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">{visitor.visitor_name}</p>
-                    <p className="text-sm text-gray-500">
-                      Host: <span className="font-medium text-foreground">{visitor.host_name}</span>
-                      {visitor.visitor_phone && <span className="ml-2">- {visitor.visitor_phone}</span>}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">{visitor.purpose}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto shrink-0">
-                  {statusBadge(visitor.status)}
-
-                  {visitor.status === "pending" && (
-                    <Button
-                      size="sm"
-                      onClick={() => handleCheckin(visitor.id)}
-                      disabled={actionLoading === visitor.id}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
-                    >
-                      {actionLoading === visitor.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
-                      Check In
-                    </Button>
-                  )}
-
-                  {visitor.status === "checked_in" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCheckout(visitor.id)}
-                      disabled={actionLoading === visitor.id}
-                      className="gap-1.5"
-                    >
-                      {actionLoading === visitor.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}
-                      Check Out
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
+        <h3 className="text-lg font-bold text-emerald-600 flex items-center gap-2">
+          <UserCheck className="w-5 h-5" /> Active Visitors (Inside)
+        </h3>
+        {activeList.length === 0 ? (
+          <Card className="border-none shadow-md"><CardContent className="py-6 text-center text-gray-500">No active visitors.</CardContent></Card>
+        ) : activeList.map(visitor => renderVisitorCard(visitor))}
       </div>
+
+      {/* Expected List */}
+      <div className="space-y-3">
+        <h3 className="text-lg font-bold text-gray-600 flex items-center gap-2">
+          <Clock className="w-5 h-5" /> Expected Visitors
+        </h3>
+        {expectedList.length === 0 ? (
+          <Card className="border-none shadow-md"><CardContent className="py-6 text-center text-gray-500">No expected visitors today.</CardContent></Card>
+        ) : expectedList.map(visitor => renderVisitorCard(visitor))}
+      </div>
+
+      {/* History List */}
+      {historyList.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-bold text-gray-400 flex items-center gap-2">
+            <LogOut className="w-5 h-5" /> Checked Out History
+          </h3>
+          {historyList.map(visitor => renderVisitorCard(visitor))}
+        </div>
+      )}
 
     </div>
   )
+
+  function renderVisitorCard(visitor) {
+    return (
+      <Card key={visitor.id} className="animate-in fade-in slide-in-from-bottom-2 border-none shadow-md overflow-hidden">
+        <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center font-bold text-lg">
+              {visitor.visitor_name?.charAt(0)?.toUpperCase()}
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">{visitor.visitor_name}</p>
+              <p className="text-sm text-gray-500">
+                Host: <span className="font-medium text-foreground">{visitor.host_name}</span>
+                {visitor.visitor_phone && <span className="ml-2">- {visitor.visitor_phone}</span>}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">{visitor.purpose} • {new Date(visitor.valid_from).toLocaleTimeString()}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto shrink-0">
+            {statusBadge(visitor.status)}
+
+            {visitor.status === "pending" && (
+              <Button
+                size="sm"
+                onClick={() => handleCheckin(visitor.id)}
+                disabled={actionLoading === visitor.id}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+              >
+                {actionLoading === visitor.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                Check In
+              </Button>
+            )}
+
+            {visitor.status === "checked_in" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleCheckout(visitor.id)}
+                disabled={actionLoading === visitor.id}
+                className="gap-1.5"
+              >
+                {actionLoading === visitor.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}
+                Check Out
+              </Button>
+            )}
+
+            {visitor.status === "overdue" && (
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => handleResolveOverdue(visitor.id)}
+                  disabled={actionLoading === visitor.id}
+                  className="gap-1.5"
+                >
+                  {actionLoading === visitor.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}
+                  Force Checkout
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleExtend(visitor.id)}
+                  disabled={actionLoading === visitor.id}
+                  className="gap-1.5 text-blue-600"
+                >
+                  Extend Visit
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 }

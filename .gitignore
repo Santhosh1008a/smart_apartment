@@ -6,7 +6,7 @@ node_modules/
 .env.local
 .env.production
 .env.development
-.env.example
+!.env.example
 
 # Logs
 logs/
@@ -36,6 +36,7 @@ coverage/
 .nyc_output
 
 # Sensitive & Local files
+/certs/
 credentials.txt
 *.pem
 *.key

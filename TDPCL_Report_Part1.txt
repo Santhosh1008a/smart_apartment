@@ -1,0 +1,582 @@
+
+================================================================================
+           TDPCL - TECHNICAL DESIGN PROJECT CAPSTONE LAB REPORT
+           PROJECT: SyncLiving — Smart Society Management Platform
+================================================================================
+                     Thiagarajar Polytechnic College, Salem
+
+================================================================================
+                          TABLE OF CONTENTS
+================================================================================
+
+1.  Abstract .............................................................. 1
+2.  Domain Exploration Report .............................................. 2
+    2.1  Introduction to the Domain ........................................ 2
+    2.2  Domain Overview: Smart Society Management ......................... 3
+    2.3  Industry Trends and Market Landscape .............................. 4
+    2.4  Technological Ecosystem of the Domain ............................. 5
+    2.5  Regulatory and Compliance Considerations .......................... 6
+    2.6  Key Challenges in the Domain ...................................... 7
+3.  Systems and Stakeholder Map ............................................ 8
+    3.1  System Overview ................................................... 8
+    3.2  Stakeholder Identification and Analysis ........................... 9
+    3.3  Stakeholder Interaction Matrix .................................... 10
+    3.4  System Boundary Definition ........................................ 11
+    3.5  System Context Diagram ............................................ 12
+    3.6  Technology Stack Mapping .......................................... 13
+4.  Problem Statement and Rationale Dossier ................................ 14
+    4.1  Problem Statement ................................................. 14
+    4.2  Problem Decomposition ............................................. 15
+    4.3  Rationale and Justification ....................................... 16
+    4.4  Objectives of the Proposed Solution ............................... 17
+    4.5  Scope and Limitations ............................................. 18
+5.  Literature & Gap Analysis .............................................. 19
+    5.1  Review of Existing Systems ........................................ 19
+    5.2  Academic Literature Review ........................................ 20
+    5.3  Technology Comparison ............................................. 21
+    5.4  Gap Analysis ...................................................... 22
+    5.5  Summary of Findings ............................................... 23
+6.  Conclusion ............................................................. 24
+7.  References ............................................................. 25
+
+
+================================================================================
+                          1. ABSTRACT
+================================================================================
+
+SyncLiving is a comprehensive, full-stack Smart Society Management Platform
+engineered to digitize and automate the operational workflows of modern
+residential apartment complexes. The platform addresses the pervasive
+inefficiencies in traditional society management—manual visitor registers,
+cash-based payment collection, uncoordinated vendor services, fragmented
+emergency communication, and opaque parking allocation—by delivering a
+unified, real-time, role-aware digital ecosystem.
+
+The system is architected using a three-tier client-server model with React.js
+powering the frontend Single Page Application, Node.js with Express.js serving
+the RESTful backend API, and PostgreSQL (hosted on Supabase) providing
+ACID-compliant data persistence. The platform integrates Redis for high-speed
+caching and JWT token management, Socket.IO for bidirectional WebSocket
+communication enabling real-time notifications and emergency broadcasts, and
+Razorpay as the payment gateway for online maintenance fee and utility bill
+collection.
+
+SyncLiving implements a robust Role-Based Access Control (RBAC) framework
+supporting five distinct user personas: Super Admin, Admin, Resident, Security
+Guard, and Vendor—each with granular permissions governing API access and
+dashboard visibility. The Visitor Management module employs HMAC-SHA256 signed
+QR tokens with configurable validity windows and scan-count limits, ensuring
+tamper-proof, time-bound visitor verification at entry gates. The Payment
+module features automated monthly invoice generation through scheduled cron
+jobs, Razorpay Checkout integration with server-side signature verification,
+and idempotent webhook processing to guarantee payment consistency.
+
+Additional modules include an intelligent Parking Management system with
+database-enforced slot uniqueness constraints, a Vendor Service Request
+workflow supporting the complete lifecycle from creation through assignment to
+completion, and an Emergency Alert Broadcasting system capable of real-time
+push notifications to all residents within a complex via WebSocket rooms.
+The platform further integrates Google Gemini API to provide an AI-powered
+conversational assistant for resident queries.
+
+Production-grade infrastructure includes Sentry for real-time error monitoring
+and performance profiling, Winston for structured JSON logging, Helmet.js for
+HTTP security headers, express-rate-limit for API throttling, and Knex.js for
+version-controlled database migrations.
+
+Keywords: Smart Society Management, Apartment Management System, QR Code
+Visitor Verification, Razorpay Payment Integration, Role-Based Access Control,
+Real-Time WebSocket Notifications, Emergency Broadcasting, Full-Stack Web
+Application, Node.js, React.js, PostgreSQL, Redis.
+
+
+================================================================================
+                    2. DOMAIN EXPLORATION REPORT
+================================================================================
+
+2.1 Introduction to the Domain
+--------------------------------
+The domain of Smart Society Management lies at the intersection of Property
+Technology (PropTech), Urban Computing, and Software-as-a-Service (SaaS)
+platforms. It encompasses the digital transformation of residential community
+operations—spanning access control, financial management, facility maintenance,
+communication, and safety systems—into integrated, cloud-based platforms
+accessible to all stakeholders through web and mobile interfaces.
+
+With India's rapid urbanization—the urban population is projected to reach 600
+million by 2030 (McKinsey Global Institute)—and the corresponding surge in
+multi-dwelling residential complexes, the demand for efficient, scalable, and
+intelligent society management solutions has become critical. The National
+Housing Bank estimates over 80,000 registered housing societies in India, with
+thousands more forming annually. Each of these societies faces common
+operational challenges that technology can systematically address.
+
+The smart society management domain draws from several established technology
+verticals including Enterprise Resource Planning (ERP) for financial
+management, Identity and Access Management (IAM) for visitor control, Internet
+of Things (IoT) for facility monitoring, and Customer Relationship Management
+(CRM) for resident engagement. The convergence of these verticals into a
+unified apartment management platform represents the core domain of this
+project.
+
+
+2.2 Domain Overview: Smart Society Management
+------------------------------------------------
+Smart Society Management refers to the application of information technology
+to streamline, automate, and optimize the day-to-day operations of
+residential housing societies and gated communities. The domain encompasses
+the following functional areas:
+
+2.2.1 Access Control and Visitor Management
+This sub-domain deals with regulating entry and exit at the gates of
+residential complexes. Traditional methods include handwritten visitor
+registers maintained by security guards—a process that is slow, error-prone,
+and virtually impossible to audit. Digital visitor management systems replace
+these registers with mobile-friendly interfaces, QR code-based passes, OTP
+verification, and automated entry logs. Key technological components include:
+  - QR code generation and cryptographic token signing
+  - Time-bound validity windows for visitor passes
+  - Real-time notification to host residents upon visitor arrival
+  - Historical visitor logs with search and filter capabilities
+
+2.2.2 Financial Management and Online Payments
+Society financial management involves collection of maintenance fees, utility
+charges, parking fees, and special assessments from residents. Traditional
+cash/cheque-based collection is plagued by delayed payments, manual
+accounting errors, and lack of transparency. Digital payment integration
+enables:
+  - Automated invoice generation with configurable billing cycles
+  - Online payment via UPI, credit/debit cards, and net banking
+  - Real-time payment confirmation and digital receipts
+  - Overdue payment tracking and automated reminder notifications
+  - Financial reporting and audit trail maintenance
+
+2.2.3 Parking and Facility Management
+Residential complexes with limited parking capacity face constant allocation
+challenges. Digital parking management provides:
+  - Inventory tracking of parking slots by type (car, bike, EV charging)
+  - Slot assignment to units with vehicle registration details
+  - Guest/visitor temporary parking allocation
+  - Conflict prevention through database-enforced uniqueness constraints
+  - Slot status tracking (available, occupied, reserved, maintenance)
+
+2.2.4 Maintenance and Vendor Services
+Residents regularly require plumbing, electrical, carpentry, cleaning, and
+other maintenance services. Without a structured request system, complaints
+are communicated verbally, leading to delayed responses and lack of
+accountability. A digital vendor management system provides:
+  - Categorized service request submission with priority levels
+  - Admin-managed vendor assignment and tracking
+  - Complete lifecycle management from request to completion
+  - Vendor rating and review system for quality assurance
+
+2.2.5 Emergency Response and Communication
+Residential complexes must be prepared for fire, medical, security, and
+natural disaster emergencies. Traditional communication methods—loudspeakers,
+door-to-door announcements, WhatsApp groups—are unreliable during actual
+emergencies. A digital emergency system provides:
+  - One-touch SOS alert triggering
+  - Real-time broadcast to all complex residents via WebSocket
+  - Alert categorization by type and severity
+  - Acknowledgment and resolution tracking by security and admin
+
+
+2.3 Industry Trends and Market Landscape
+-------------------------------------------
+The Indian PropTech market was valued at USD 1.1 billion in 2023 and is
+projected to grow at a CAGR of 30% to reach USD 5.9 billion by 2028
+(India PropTech Report, IBEF). Within this broader market, society management
+platforms represent a rapidly growing segment driven by several trends:
+
+2.3.1 Digital Payment Adoption
+The Unified Payments Interface (UPI) processed over 14 billion transactions
+in March 2024, reflecting India's massive shift toward digital payments.
+Residents increasingly expect the convenience of paying society dues online,
+making payment gateway integration a fundamental requirement for any
+apartment management platform.
+
+2.3.2 Smart Building and IoT Integration
+Modern residential complexes are incorporating smart building technologies
+including automated lighting, HVAC control, water metering, and EV charging
+stations. Society management platforms are evolving to integrate with these
+IoT systems, providing centralized monitoring and control dashboards.
+
+2.3.3 Real-Time Communication
+The ubiquity of smartphones and high-speed internet has created an
+expectation for real-time information delivery. Residents expect instant
+notifications about visitor arrivals, payment confirmations, and emergency
+alerts rather than delayed SMS or email communications.
+
+2.3.4 AI and Automation
+Artificial intelligence is being integrated into society management for
+predictive maintenance scheduling, intelligent chatbot-based resident
+support, automated document processing, and anomaly detection in financial
+transactions.
+
+2.3.5 Cloud-Native Architecture
+Society management platforms are migrating from on-premise installations
+to cloud-native SaaS architectures, enabling easier deployment, automatic
+scaling, and elimination of hardware management for housing societies.
+
+
+2.4 Technological Ecosystem of the Domain
+--------------------------------------------
+The technological landscape for smart society management platforms involves:
+
+2.4.1 Frontend Technologies
+  - React.js / Angular / Vue.js for web applications
+  - React Native / Flutter for cross-platform mobile apps
+  - Progressive Web Apps (PWA) for offline-capable web experiences
+
+2.4.2 Backend Technologies
+  - Node.js (Express.js, Fastify) for event-driven APIs
+  - Python (Django, FastAPI) for data-intensive operations
+  - Java (Spring Boot) for enterprise-grade deployments
+
+2.4.3 Database Technologies
+  - PostgreSQL: Relational data with complex queries and ACID compliance
+  - MongoDB: Document-oriented storage for flexible schemas
+  - Redis: In-memory caching and real-time pub/sub messaging
+
+2.4.4 Payment Gateways
+  - Razorpay: Dominant Indian payment gateway with UPI support
+  - PayU: Alternative with recurring payment capabilities
+  - Stripe: International payment processing
+
+2.4.5 Real-Time Communication
+  - WebSocket (Socket.IO): Bidirectional real-time messaging
+  - Server-Sent Events (SSE): Unidirectional server push
+  - Firebase Cloud Messaging (FCM): Mobile push notifications
+
+2.4.6 DevOps and Infrastructure
+  - Docker / Kubernetes: Containerization and orchestration
+  - CI/CD: GitHub Actions, GitLab CI
+  - Cloud Providers: AWS, Google Cloud, Render, DigitalOcean
+  - Monitoring: Sentry, Prometheus, Grafana
+
+
+2.5 Regulatory and Compliance Considerations
+-----------------------------------------------
+Smart society management platforms handling financial transactions and
+personal data must comply with several regulatory frameworks:
+
+2.5.1 Information Technology Act, 2000 (India)
+Governs electronic transactions, data protection, and cybersecurity
+requirements for online platforms operating in India. The platform must
+implement reasonable security practices to protect user data.
+
+2.5.2 Reserve Bank of India (RBI) Guidelines
+Payment gateway integrations must comply with RBI guidelines on digital
+payment processing, including tokenization of card data, secure storage
+requirements, and transaction dispute resolution mechanisms. SyncLiving's
+use of Razorpay ensures PCI-DSS compliance is handled at the gateway level.
+
+2.5.3 Digital Personal Data Protection Act, 2023 (DPDPA)
+India's comprehensive data protection law requires platforms to:
+  - Obtain explicit consent for personal data collection
+  - Implement data minimization principles
+  - Provide data access and deletion capabilities to users
+  - Ensure cross-border data transfer compliance
+  - Appoint a Data Protection Officer for significant data processors
+
+2.5.4 Real Estate (Regulation and Development) Act, 2016 (RERA)
+While RERA primarily governs real estate development, its provisions on
+transparency and accountability influence how society management platforms
+handle financial reporting and communication with residents.
+
+2.5.5 Maharashtra Cooperative Societies Act / Tamil Nadu Apartments Act
+State-level legislation governing housing societies dictates requirements
+for financial record-keeping, meeting documentation, and member
+communication that apartment management platforms must support.
+
+
+2.6 Key Challenges in the Domain
+-----------------------------------
+The smart society management domain faces several systemic challenges:
+
+2.6.1 Technology Adoption Resistance
+Older residents and committee members often resist transitioning from
+familiar manual processes to digital platforms. Solutions must provide
+intuitive interfaces and gradual migration paths.
+
+2.6.2 Diverse Infrastructure
+Indian residential complexes vary enormously—from 20-unit societies to
+5,000-unit townships. Platforms must scale across this spectrum without
+forcing smaller societies to pay for enterprise features.
+
+2.6.3 Connectivity Constraints
+Despite improving broadband penetration, many residential areas experience
+intermittent internet connectivity. Platforms should implement offline
+capabilities and graceful degradation for critical functions.
+
+2.6.4 Data Security Concerns
+Society management platforms store sensitive personal, financial, and
+location data. Security breaches can expose residents to identity theft,
+financial fraud, and physical security risks.
+
+2.6.5 Integration Complexity
+Societies often use multiple disconnected tools—WhatsApp groups for
+communication, Excel for accounting, paper registers for visitors.
+Migrating data from these disparate sources into a unified platform is
+a significant challenge.
+
+2.6.6 Payment Reconciliation
+Managing multiple payment methods (online, cash, cheque, bank transfer)
+and reconciling them against generated invoices introduces accounting
+complexity that platforms must handle gracefully.
+
+
+================================================================================
+                  3. SYSTEMS AND STAKEHOLDER MAP
+================================================================================
+
+3.1 System Overview
+---------------------
+SyncLiving is designed as a multi-tenant, role-based web platform that
+serves as the central operational hub for residential apartment complexes.
+The system manages the complete lifecycle of apartment operations including
+resident onboarding, visitor access control, financial transactions,
+facility management, vendor coordination, and emergency response.
+
+The system architecture consists of three primary layers:
+
+Layer 1: Client Application (Presentation)
+  - React.js Single Page Application (SPA)
+  - Role-based dashboard rendering
+  - Real-time WebSocket notification client
+  - Razorpay Checkout SDK integration
+  - Responsive design for desktop and mobile browsers
+
+Layer 2: API Server (Business Logic)
+  - Node.js + Express.js RESTful API server
+  - JWT-based authentication with refresh token rotation
+  - Middleware pipeline: Rate limiting, CORS, Helmet, Audit logging
+  - Socket.IO WebSocket server for real-time events
+  - Cron job scheduler for automated tasks (invoice generation,
+    visitor pass expiry, overdue payment reminders)
+  - Razorpay SDK for payment order creation and verification
+  - Google Gemini API for AI-powered assistant
+  - Multer for file upload handling
+
+Layer 3: Data Infrastructure
+  - PostgreSQL (Supabase): 15 relational tables with foreign key
+    constraints, check constraints, and optimized indexes
+  - Redis: JWT blocklist, API rate limit counters, response caching
+  - Local file system: Uploaded avatars and documents
+
+The system exposes 12 RESTful route groups:
+  1. /api/v1/auth - Authentication and user management
+  2. /api/v1/admin - Administrative operations
+  3. /api/v1/super-admin - Super admin complex management
+  4. /api/v1/visitors - Visitor pass and QR management
+  5. /api/v1/payments - Payment processing
+  6. /api/v1/parking - Parking slot management
+  7. /api/v1/services - Vendor service requests
+  8. /api/v1/security - Security guard operations
+  9. /api/v1/vendor - Vendor dashboard operations
+  10. /api/v1/notifications - Notification management
+  11. /api/v1/webhooks - Razorpay webhook receiver
+  12. /api/v1/assistant - AI chatbot interface
+
+
+3.2 Stakeholder Identification and Analysis
+----------------------------------------------
+
+3.2.1 Primary Stakeholders
+
+Stakeholder 1: Residents (Owners and Tenants)
+  - Role in System: End users who interact with the platform daily
+  - Needs: Easy visitor pass creation, convenient online payments,
+    quick maintenance request submission, emergency SOS capability,
+    transparent billing, parking information
+  - Pain Points: Manual payment processes, lack of visitor tracking,
+    delayed vendor responses, no centralized communication channel
+  - System Interaction: Dashboard, visitor module, payment module,
+    service request module, emergency module, AI assistant, profile
+    management, notifications
+
+Stakeholder 2: Society Administrators
+  - Role in System: Platform managers who configure and oversee all
+    operations within their assigned complex
+  - Needs: User management, invoice generation (single and bulk),
+    parking slot allocation, vendor assignment, emergency monitoring,
+    financial reporting, building/unit management
+  - Pain Points: Manual accounting, paper-based record keeping,
+    difficulty tracking overdue payments, no centralized vendor
+    management
+  - System Interaction: Admin dashboard with analytics, user CRUD,
+    invoice management, parking management, vendor request assignment,
+    emergency alert monitoring, building/unit configuration
+
+Stakeholder 3: Security Guards
+  - Role in System: Gate-level operators responsible for visitor
+    verification and access control
+  - Needs: Quick QR code scanning, visitor identity verification,
+    check-in/check-out recording, guest vehicle parking management,
+    emergency alert visibility
+  - Pain Points: Illegible handwritten registers, inability to verify
+    visitor authenticity, no communication with residents about visitor
+    arrival
+  - System Interaction: Security dashboard, QR scan verification,
+    visitor check-in/out, guest vehicle parking allocation
+
+Stakeholder 4: Vendors (Service Providers)
+  - Role in System: Maintenance professionals assigned to service
+    requests by administrators
+  - Needs: View assigned jobs, update job status, track work history,
+    receive assignment notifications
+  - Pain Points: Missed assignments communicated verbally, no record
+    of completed work, difficulty coordinating with multiple societies
+  - System Interaction: Vendor dashboard, job status updates, job
+    history view
+
+Stakeholder 5: Super Administrators
+  - Role in System: Platform-level administrators managing multiple
+    apartment complexes
+  - Needs: Complex creation and management, admin user management,
+    platform-wide oversight
+  - Pain Points: Managing multiple complexes through separate systems,
+    no centralized control
+  - System Interaction: Super admin dashboard, complex CRUD, admin
+    user management
+
+3.2.2 Secondary Stakeholders
+
+Stakeholder 6: Visitors
+  - Role: External individuals visiting residents
+  - Interaction: Receive QR codes from residents, present at gate
+  - Needs: Easy pass sharing, clear validity information
+
+Stakeholder 7: Razorpay (Payment Gateway)
+  - Role: External payment processing service
+  - Interaction: Order creation API, checkout SDK, webhook delivery
+  - Needs: Valid API credentials, webhook endpoint availability,
+    signature verification compliance
+
+Stakeholder 8: Supabase (Database Provider)
+  - Role: Managed PostgreSQL hosting and database services
+  - Interaction: Database connections, query execution
+  - Needs: Connection string configuration, query optimization
+
+
+3.3 Stakeholder Interaction Matrix
+-------------------------------------
+
+The following matrix shows how stakeholders interact with each system module:
+
+                    |Visitor|Payment|Parking|Vendor|Emergency|Notification|
+---------------------------------------------------------------------------
+Resident            | Create|  Pay  |  View | Raise|  Trigger|   Receive  |
+Admin               |  View | Create| Manage|Assign| Monitor |   Receive  |
+Security Guard      | Verify|   -   | Guest |   -  |  Alert  |   Receive  |
+Vendor              |   -   |   -   |   -   |Update|    -    |   Receive  |
+Super Admin         |   -   |   -   |   -   |   -  |    -    |   Receive  |
+Razorpay            |   -   |Process|   -   |   -  |    -    |      -     |
+
+
+3.4 System Boundary Definition
+---------------------------------
+The system boundary for SyncLiving is defined by the following inclusions
+and exclusions:
+
+Within System Boundary (In Scope):
+  - User authentication and session management
+  - Role-based access control enforcement
+  - Digital visitor pass creation, QR generation, and verification
+  - Online payment order creation, checkout, and verification
+  - Razorpay webhook processing for payment confirmation
+  - Parking slot CRUD and vehicle assignment management
+  - Vendor service request lifecycle management
+  - Emergency alert creation, broadcasting, and resolution
+  - Real-time WebSocket notification delivery
+  - Scheduled cron jobs (invoice generation, pass expiry, reminders)
+  - AI assistant integration (Google Gemini)
+  - File upload handling (avatars, documents)
+  - API documentation (Swagger)
+  - Error monitoring (Sentry)
+  - Structured logging (Winston)
+
+Outside System Boundary (Out of Scope):
+  - Physical access control hardware (boom barriers, turnstiles)
+  - CCTV camera integration and video surveillance
+  - IoT sensor data collection (water meters, electricity meters)
+  - Biometric authentication devices
+  - SMS/Email delivery infrastructure (delegated to external providers)
+  - Mobile native application (planned for future release)
+  - Accounting software integration (Tally, QuickBooks)
+  - Government regulatory filing automation
+
+
+3.5 System Context Diagram
+-----------------------------
+
+  +------------------+        +-------------------+
+  |    Residents     |------->|                   |
+  | (Web Browser)    |<-------|                   |
+  +------------------+        |                   |
+                              |                   |       +-----------+
+  +------------------+        |                   |------>| PostgreSQL|
+  | Administrators   |------->|    SyncLiving     |<------| (Supabase)|
+  | (Web Browser)    |<-------|  Smart Society    |       +-----------+
+  +------------------+        |   Management      |
+                              |    Platform       |       +-----------+
+  +------------------+        |                   |------>|   Redis   |
+  | Security Guards  |------->|  (Node.js API +   |<------|  (Cache)  |
+  | (Web Browser)    |<-------|   React.js SPA)   |       +-----------+
+  +------------------+        |                   |
+                              |                   |       +-----------+
+  +------------------+        |                   |<----->|  Razorpay |
+  |    Vendors       |------->|                   |       | (Payments)|
+  | (Web Browser)    |<-------|                   |       +-----------+
+  +------------------+        |                   |
+                              |                   |       +-----------+
+  +------------------+        |                   |<----->|  Google   |
+  |  Super Admins    |------->|                   |       |  Gemini  |
+  | (Web Browser)    |<-------|                   |       |  (AI API)|
+  +------------------+        +-------------------+       +-----------+
+
+
+3.6 Technology Stack Mapping
+-------------------------------
+The complete technology stack used in SyncLiving, organized by layer:
+
+FRONTEND:
+  Framework    : React.js 18.x
+  Build Tool   : Vite
+  Routing      : React Router DOM
+  HTTP Client  : Axios with interceptors
+  State Mgmt   : React Hooks (useState, useEffect, useContext)
+  Styling      : CSS with responsive design
+
+BACKEND:
+  Runtime      : Node.js 18.x
+  Framework    : Express.js 4.18.x
+  Authentication: JSON Web Tokens (jsonwebtoken 9.x)
+  Validation   : Joi 17.x
+  File Upload  : Multer 2.x
+  WebSocket    : Socket.IO 4.x
+  Scheduler    : node-cron 4.x
+  Logging      : Winston 3.x + Morgan
+  Security     : Helmet 7.x, express-rate-limit 8.x, bcrypt 5.x, CORS
+  API Docs     : Swagger (swagger-jsdoc + swagger-ui-express)
+  Monitoring   : Sentry (Node SDK)
+  AI           : Google Generative AI SDK (Gemini)
+
+DATABASE:
+  Primary DB   : PostgreSQL 15.x (hosted on Supabase)
+  DB Client    : pg (node-postgres) 8.x
+  Migrations   : Knex.js 3.x
+  Caching      : Redis 7.x (redis npm package 5.x)
+
+PAYMENT:
+  Gateway      : Razorpay SDK 2.x
+  Integration  : Server-side order creation + client-side Checkout
+  Verification : HMAC-SHA256 signature verification
+  Webhooks     : Express raw body parser for signature validation
+
+DEVOPS:
+  Version Control : Git + GitHub
+  Containerization: Docker (Dockerfile included)
+  Process Manager : PM2 (ecosystem.config.js)
+  Testing         : Jest 30.x + Supertest 7.x
+

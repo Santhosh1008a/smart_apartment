@@ -7,7 +7,7 @@ import { Mail, Lock, User, Phone, Loader2, AlertCircle, CheckCircle2, Building }
 import { useEffect } from "react"
 
 export default function Register() {
-  const [formData, setFormData] = useState({ full_name: "", email: "", phone: "", password: "", complex_id: "" })
+  const [formData, setFormData] = useState({ full_name: "", email: "", phone: "", password: "", complex_id: "", terms_accepted: false, privacy_acknowledged: false })
   const [complexes, setComplexes] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -134,8 +134,20 @@ export default function Register() {
           <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
             <Lock className="h-4 w-4" />
           </div>
-          <Input required type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="pl-10 h-11" placeholder="••••••••" />
+          <Input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="pl-10 h-11" placeholder="At least 12 characters" />
         </div>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border bg-secondary/30 p-4 text-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Draft notices — legal review required before launch</p>
+        <label className="flex items-start gap-2">
+          <input required type="checkbox" checked={formData.terms_accepted} onChange={e => setFormData({ ...formData, terms_accepted: e.target.checked })} className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary" />
+          <span>I agree to the <Link to="/terms" className="font-medium text-primary underline">draft Terms</Link>.</span>
+        </label>
+        <label className="flex items-start gap-2">
+          <input required type="checkbox" checked={formData.privacy_acknowledged} onChange={e => setFormData({ ...formData, privacy_acknowledged: e.target.checked })} className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary" />
+          <span>I have read the <Link to="/privacy" className="font-medium text-primary underline">draft Privacy Policy</Link>.</span>
+        </label>
       </div>
 
       <Button type="submit" disabled={isLoading} className="w-full h-11 mt-4">

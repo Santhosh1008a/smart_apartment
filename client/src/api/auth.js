@@ -2,16 +2,28 @@ import api from './axios'
 
 export const loginUser = async (email, password) => {
   const { data } = await api.post('/auth/login', { email, password })
-  return data // { success, accessToken, refreshToken, user }
+  return data // { success, accessToken, user }; refresh token is HttpOnly cookie only.
 }
 
-export const registerUser = async ({ full_name, email, phone, password, complex_id }) => {
+export const logoutUser = async () => {
+  const { data } = await api.post('/auth/logout', {})
+  return data
+}
+
+export const refreshSession = async () => {
+  const { data } = await api.post('/auth/refresh', {})
+  return data
+}
+
+export const registerUser = async ({ full_name, email, phone, password, complex_id, terms_accepted, privacy_acknowledged }) => {
   const { data } = await api.post('/auth/register', {
     full_name,
     email,
     phone,
     password,
     complex_id,
+    terms_accepted,
+    privacy_acknowledged,
   })
   return data // { success, data: { id, email, full_name, role } }
 }

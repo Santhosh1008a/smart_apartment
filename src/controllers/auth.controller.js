@@ -1,10 +1,21 @@
 const bcrypt = require('bcrypt');
 const Joi = require('joi');
-const { query } = require('../config/db');
+const crypto = require('crypto');
+const { query, getClient } = require('../config/db');
 const supabase = require('../config/supabase');
 const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const { AppError } = require('../middlewares/error.middleware');
 const logger = require('../utils/logger');
+const { TERMS_NOTICE_VERSION, PRIVACY_NOTICE_VERSION, hasLaunchLegalDetails } = require('../config/legal');
+
+const hashRefreshToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+const getRefreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  path: '/api/v1/auth',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
 
 const AVATAR_BUCKET = process.env.SUPABASE_AVATAR_BUCKET || 'avatars';
 const getStorageErrorDetails = (error) => {
@@ -21,6 +32,7 @@ const getStorageErrorDetails = (error) => {
 };
 
 exports.register = async (req, res, next) => {
+  let client;
   try {
     const { email, phone, password, full_name, complex_id } = req.body;
     // NOTE: 'role' is intentionally NOT accepted from req.body.
@@ -31,27 +43,40 @@ exports.register = async (req, res, next) => {
       return next(new AppError('complex_id is required during registration', 400));
     }
 
-    // Check if user exists
-    const userCheck = await query('SELECT id FROM users WHERE email = $1 OR phone = $2', [email, phone]);
-    if (userCheck.rows.length > 0) {
-      return next(new AppError('User with this email or phone already exists', 400));
+    if (process.env.NODE_ENV === 'production' && !hasLaunchLegalDetails()) {
+      return next(new AppError('Registration is temporarily unavailable until the legal notices and service-provider contact details are approved.', 503));
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const password_hash = await bcrypt.hash(password, salt);
+    const password_hash = await bcrypt.hash(password, 12);
 
-    const newUser = await query(
+    client = await getClient();
+    await client.query('BEGIN');
+    const newUser = await client.query(
       `INSERT INTO users (email, phone, password_hash, full_name, role, complex_id) 
        VALUES ($1, $2, $3, $4, 'resident', $5) RETURNING id, email, full_name, role, complex_id`,
       [email, phone, password_hash, full_name, complex_id]
     );
+
+    const userId = newUser.rows[0].id;
+    await client.query(
+      `INSERT INTO user_notice_acknowledgements (user_id, notice_type, notice_version)
+       VALUES ($1, 'terms', $2), ($1, 'privacy', $3)`,
+      [userId, TERMS_NOTICE_VERSION, PRIVACY_NOTICE_VERSION]
+    );
+    await client.query('COMMIT');
 
     res.status(201).json({
       success: true,
       data: newUser.rows[0],
     });
   } catch (err) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch { /* Preserve the original failure. */ }
+    }
+    if (err.code === '23505') return next(new AppError('User with this email or phone already exists', 400));
     next(err);
+  } finally {
+    client?.release();
   }
 };
 
@@ -77,17 +102,6 @@ exports.login = async (req, res, next) => {
       return next(new AppError('Invalid email or password', 401));
     }
 
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
-
-    // Set refresh token in httpOnly cookie protecting against XSS
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
     // Fetch user units
     const unitsRes = await query(
       `SELECT u.id as unit_id, u.unit_number, uu.relation 
@@ -96,6 +110,17 @@ exports.login = async (req, res, next) => {
        WHERE uu.user_id = $1`,
       [user.id]
     );
+
+    const accessToken = signAccessToken(user);
+    const refreshSessionId = crypto.randomUUID();
+    const refreshToken = signRefreshToken(user, refreshSessionId);
+    const decodedRefresh = verifyRefreshToken(refreshToken);
+    await query(
+      `INSERT INTO auth_refresh_sessions (id, user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3, to_timestamp($4))`,
+      [refreshSessionId, user.id, hashRefreshToken(refreshToken), decodedRefresh.exp]
+    );
+    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     res.status(200).json({
       success: true,
@@ -116,26 +141,80 @@ exports.login = async (req, res, next) => {
 };
 
 exports.refresh = async (req, res, next) => {
+  let client;
   try {
-    const token = req.cookies.refreshToken || req.body.token; // Fallback for testing/swagger
+    const token = req.cookies?.refreshToken;
     if (!token) return next(new AppError('Refresh token required', 400));
 
     const decoded = verifyRefreshToken(token);
-    if (!decoded) return next(new AppError('Invalid or expired refresh token', 401));
+    if (!decoded?.jti) return next(new AppError('Invalid or expired refresh token', 401));
 
-    const { rows } = await query('SELECT id, role, is_active, complex_id, email, full_name FROM users WHERE id = $1', [decoded.id]);
-    if (rows.length === 0 || !rows[0].is_active) return next(new AppError('User not found', 404));
+    client = await getClient();
+    await client.query('BEGIN');
+    const session = await client.query(
+      `SELECT id FROM auth_refresh_sessions
+       WHERE id = $1 AND user_id = $2 AND token_hash = $3
+         AND revoked_at IS NULL AND expires_at > now()
+       FOR UPDATE`,
+      [decoded.jti, decoded.id, hashRefreshToken(token)]
+    );
+    if (!session.rows.length) {
+      await client.query('ROLLBACK');
+      return next(new AppError('Invalid, expired, or revoked refresh token', 401));
+    }
 
-    const user = rows[0];
+    const userResult = await client.query(
+      'SELECT id, role, is_active, complex_id, email, full_name FROM users WHERE id = $1',
+      [decoded.id]
+    );
+    if (userResult.rows.length === 0 || !userResult.rows[0].is_active) {
+      await client.query('UPDATE auth_refresh_sessions SET revoked_at = now() WHERE id = $1', [decoded.jti]);
+      await client.query('COMMIT');
+      return next(new AppError('User not found or deactivated', 401));
+    }
+
+    const user = userResult.rows[0];
+    const nextSessionId = crypto.randomUUID();
+    const nextRefreshToken = signRefreshToken(user, nextSessionId);
+    const nextDecoded = verifyRefreshToken(nextRefreshToken);
+    await client.query(
+      'UPDATE auth_refresh_sessions SET revoked_at = now(), replaced_by = $1 WHERE id = $2',
+      [nextSessionId, decoded.jti]
+    );
+    await client.query(
+      `INSERT INTO auth_refresh_sessions (id, user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3, to_timestamp($4))`,
+      [nextSessionId, user.id, hashRefreshToken(nextRefreshToken), nextDecoded.exp]
+    );
+    await client.query('COMMIT');
     const newAccessToken = signAccessToken(user);
-
+    res.cookie('refreshToken', nextRefreshToken, getRefreshCookieOptions());
     res.status(200).json({
       success: true,
       accessToken: newAccessToken
     });
   } catch (err) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch { /* Preserve the original failure. */ }
+    }
     next(err);
+  } finally {
+    client?.release();
   }
+};
+
+exports.logout = async (req, res, next) => {
+  const token = req.cookies?.refreshToken;
+  res.clearCookie('refreshToken', getRefreshCookieOptions());
+  const decoded = token ? verifyRefreshToken(token) : null;
+  if (decoded?.jti) {
+    try {
+      await query('UPDATE auth_refresh_sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [decoded.jti]);
+    } catch (error) {
+      return next(error);
+    }
+  }
+  res.status(200).json({ success: true });
 };
 
 exports.getMe = async (req, res, next) => {
@@ -257,13 +336,12 @@ exports.updateAvatar = async (req, res, next) => {
     const { id } = req.user;
     const file = req.file;
     if (!file.buffer || !Buffer.isBuffer(file.buffer)) {
-      logger.warn('Avatar upload missing file buffer', { requestId: req.id, userId: id, field: file.fieldname });
+      logger.warn('Avatar upload missing file buffer', { requestId: req.id, field: file.fieldname });
       return next(new AppError('Uploaded avatar file was not readable', 400));
     }
 
     logger.info('Avatar upload received', {
       requestId: req.id,
-      userId: id,
       field: file.fieldname,
       mimetype: file.mimetype,
       size: file.size,
@@ -282,11 +360,11 @@ exports.updateAvatar = async (req, res, next) => {
         if (urlParts.length > 1) {
           const oldFilePath = urlParts[1];
           await supabase.storage.from(AVATAR_BUCKET).remove([oldFilePath]);
-          logger.info('Old avatar removed', { requestId: req.id, userId: id, oldFilePath });
+          logger.info('Old avatar removed', { requestId: req.id });
         }
       } catch (err) {
         // If deletion fails, log it but don't stop the new upload
-        logger.warn('Failed to delete old avatar', { requestId: req.id, userId: id, message: err.message });
+        logger.warn('Failed to delete old avatar', { requestId: req.id, errorName: err.name, errorCode: err.code });
       }
     }
 
@@ -296,10 +374,9 @@ exports.updateAvatar = async (req, res, next) => {
     const filePath = `${id}/${timestamp}-${safeName}`;
 
     // Upload to Supabase Storage
-    let uploadData;
     let uploadError;
     try {
-      ({ data: uploadData, error: uploadError } = await supabase.storage
+      ({ error: uploadError } = await supabase.storage
         .from(AVATAR_BUCKET)
         .upload(filePath, file.buffer, {
           contentType: file.mimetype,
@@ -309,11 +386,8 @@ exports.updateAvatar = async (req, res, next) => {
     } catch (err) {
       logger.error('Supabase avatar upload threw', {
         requestId: req.id,
-        userId: id,
         bucket: AVATAR_BUCKET,
-        filePath,
-        message: err.message,
-        cause: err.cause?.message,
+        errorName: err.name,
         code: err.cause?.code,
       });
       return next(new AppError('Error uploading avatar: could not reach Supabase Storage', 502));
@@ -323,17 +397,16 @@ exports.updateAvatar = async (req, res, next) => {
       const storageError = getStorageErrorDetails(uploadError);
       logger.error('Supabase avatar upload failed', {
         requestId: req.id,
-        userId: id,
         bucket: AVATAR_BUCKET,
-        filePath,
-        ...storageError,
+        errorName: storageError.name,
+        errorCode: storageError.originalCode || storageError.statusCode || storageError.status,
       });
       if (storageError.originalCode === 'CERT_NOT_YET_VALID') {
         return next(new AppError('Error uploading avatar: server clock is behind Supabase TLS certificate validity. Sync system date/time and retry.', 502));
       }
-      return next(new AppError(`Error uploading avatar: ${uploadError.message}`, 500));
+      return next(new AppError('Error uploading avatar. Please retry later.', 500));
     }
-    logger.info('Supabase avatar upload succeeded', { requestId: req.id, userId: id, bucket: AVATAR_BUCKET, filePath, storagePath: uploadData?.path });
+    logger.info('Supabase avatar upload succeeded', { requestId: req.id, bucket: AVATAR_BUCKET });
 
     // Get public URL
     const { data: publicUrlData } = supabase.storage
@@ -342,7 +415,7 @@ exports.updateAvatar = async (req, res, next) => {
 
     const avatarUrl = publicUrlData.publicUrl;
     if (!avatarUrl) {
-      logger.error('Supabase public URL generation failed', { requestId: req.id, userId: id, bucket: AVATAR_BUCKET, filePath });
+      logger.error('Supabase public URL generation failed', { requestId: req.id, bucket: AVATAR_BUCKET });
       return next(new AppError('Avatar uploaded but public URL could not be generated', 500));
     }
 
@@ -408,32 +481,49 @@ exports.updateProfile = async (req, res, next) => {
 };
 
 exports.changePassword = async (req, res, next) => {
+  let client;
   try {
     const { current_password, new_password } = req.body;
     const { id } = req.user;
 
-    if (!current_password || !new_password) {
-      return next(new AppError('current_password and new_password are required', 400));
+    client = await getClient();
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT password_hash FROM users WHERE id = $1 FOR UPDATE', [id]);
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return next(new AppError('User not found', 404));
     }
-
-    if (new_password.length < 6) {
-      return next(new AppError('New password must be at least 6 characters', 400));
-    }
-
-    // Fetch current password hash
-    const { rows } = await query('SELECT password_hash FROM users WHERE id = $1', [id]);
-    if (rows.length === 0) return next(new AppError('User not found', 404));
 
     const isMatch = await bcrypt.compare(current_password, rows[0].password_hash);
-    if (!isMatch) return next(new AppError('Current password is incorrect', 401));
+    if (!isMatch) {
+      await client.query('ROLLBACK');
+      return next(new AppError('Current password is incorrect', 401));
+    }
 
-    const salt = await bcrypt.genSalt(10);
-    const newHash = await bcrypt.hash(new_password, salt);
-
-    await query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [newHash, id]);
+    const newHash = await bcrypt.hash(new_password, 12);
+    await client.query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [newHash, id]);
+    const currentSessionId = verifyRefreshToken(req.cookies?.refreshToken || '')?.jti;
+    if (currentSessionId) {
+      await client.query(
+        `UPDATE auth_refresh_sessions SET revoked_at = now()
+         WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL`,
+        [id, currentSessionId]
+      );
+    } else {
+      await client.query(
+        'UPDATE auth_refresh_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
+        [id]
+      );
+    }
+    await client.query('COMMIT');
 
     res.status(200).json({ success: true, message: 'Password changed successfully' });
   } catch (err) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch { /* Preserve the original failure. */ }
+    }
     next(err);
+  } finally {
+    client?.release();
   }
 };

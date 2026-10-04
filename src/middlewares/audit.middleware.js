@@ -10,8 +10,7 @@ exports.auditLog = (actionName) => {
           userId: req.user ? req.user.id : 'anonymous',
           userRole: req.user ? req.user.role : 'none',
           method: req.method,
-          url: req.originalUrl,
-          ip: req.ip,
+          path: req.route?.path || req.path,
           statusCode: res.statusCode,
         });
       }

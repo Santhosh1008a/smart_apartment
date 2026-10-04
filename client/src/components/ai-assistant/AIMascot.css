@@ -1,0 +1,111 @@
+.ai-mascot {
+  position: fixed;
+  z-index: 80;
+  width: clamp(76px, 8vw, 100px);
+  height: clamp(88px, 9vw, 116px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ai-mascot:focus-visible {
+  border-radius: 32px;
+  outline: 2px solid #39c8ff;
+  outline-offset: 3px;
+}
+
+.ai-mascot[data-state="dragging"] {
+  cursor: grabbing;
+}
+
+.ai-mascot__art {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transform-origin: center 78%;
+  transition: filter 180ms ease, transform 180ms ease;
+}
+
+.ai-mascot__body {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 4px rgb(7 35 91 / 18%));
+}
+
+.ai-mascot__face {
+  position: absolute;
+  top: 0;
+  left: 1%;
+  width: 98%;
+  height: 66%;
+  object-fit: fill;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.ai-mascot__wink-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ai-mascot__screen {
+  position: absolute;
+  top: 32%;
+  left: 21%;
+  width: 58%;
+  height: 30%;
+  border: 1px solid #111d47;
+  border-radius: 8px;
+  background: #050c26;
+}
+
+.ai-mascot__eyes {
+  position: absolute;
+  top: 37%;
+  left: 23%;
+  width: 54%;
+  height: 22%;
+  object-fit: fill;
+  image-rendering: pixelated;
+}
+
+.ai-mascot:hover .ai-mascot__art {
+  filter: drop-shadow(0 5px 7px rgb(8 113 196 / 25%));
+  transform: translateY(-2px) scale(1.025);
+}
+
+.ai-mascot[data-state="dragging"] .ai-mascot__art,
+.ai-mascot:active .ai-mascot__art {
+  transform: scale(0.98);
+}
+
+.ai-mascot[data-state="idle"] .ai-mascot__art,
+.ai-mascot[data-state="thinking"] .ai-mascot__art,
+.ai-mascot[data-state="working"] .ai-mascot__art {
+  animation: ai-mascot-float 3.2s ease-in-out infinite;
+}
+
+@keyframes ai-mascot-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-4px) rotate(1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-mascot__art,
+  .ai-mascot[data-state="idle"] .ai-mascot__art,
+  .ai-mascot[data-state="thinking"] .ai-mascot__art,
+  .ai-mascot[data-state="working"] .ai-mascot__art {
+    animation: none;
+    transition: none;
+  }
+}

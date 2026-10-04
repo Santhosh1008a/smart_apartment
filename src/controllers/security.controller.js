@@ -17,7 +17,7 @@ exports.getVisitorsToday = async (req, res, next) => {
        JOIN user_units uu ON uu.user_id = u.id AND uu.moved_out_at IS NULL
        JOIN units un ON uu.unit_id = un.id
        JOIN buildings b ON un.building_id = b.id
-       WHERE vp.valid_from >= $1
+       WHERE (vp.valid_from >= $1 OR vp.status IN ('checked_in', 'overdue'))
          AND b.complex_id = $2
        ORDER BY vp.created_at DESC`,
       [todayStart.toISOString(), complexId]
@@ -35,42 +35,34 @@ exports.checkinVisitor = async (req, res, next) => {
     const { id } = req.params;
     const complexId = req.user.complex_id;
 
-    // Verify the visitor pass belongs to this complex before updating
-    const verifyResult = await query(
-      `SELECT vp.id, vp.status
-       FROM visitor_passes vp
-       JOIN users u ON vp.host_user_id = u.id
-       JOIN user_units uu ON uu.user_id = u.id AND uu.moved_out_at IS NULL
-       JOIN units un ON uu.unit_id = un.id
-       JOIN buildings b ON un.building_id = b.id
-       WHERE vp.id = $1 AND b.complex_id = $2`,
+    // Keep tenant authorization and the state transition in one statement so
+    // concurrent scans cannot both check in, and no stale pre-check can race.
+    const { rows } = await query(
+      `UPDATE visitor_passes vp
+       SET status = 'checked_in', checked_in_at = now()
+       WHERE vp.id = $1
+         AND vp.status = 'pending'
+         AND EXISTS (
+           SELECT 1
+           FROM user_units uu
+           JOIN units un ON uu.unit_id = un.id
+           JOIN buildings b ON un.building_id = b.id
+           WHERE uu.user_id = vp.host_user_id
+             AND uu.moved_out_at IS NULL
+             AND b.complex_id = $2
+         )
+       RETURNING vp.*`,
       [id, complexId]
     );
 
-    if (verifyResult.rows.length === 0) {
-      return next(new AppError('Visitor pass not found in your complex', 404));
-    }
-
-    if (verifyResult.rows[0].status !== 'pending') {
-      return next(new AppError('Visitor pass is not in pending status', 400));
-    }
-
-    const { rows } = await query(
-      `UPDATE visitor_passes
-       SET status = 'checked_in', checked_in_at = now()
-       WHERE id = $1 AND status = 'pending'
-       RETURNING *`,
-      [id]
-    );
-
     if (rows.length === 0) {
-      return next(new AppError('Failed to check in visitor', 500));
+      return next(new AppError('Visitor pass not found in your complex or is no longer pending', 404));
     }
 
     // Emit real-time event
     const io = req.app.get('io');
-    if (io) {
-      io.emit('visitor_checkin', {
+    if (io && complexId) {
+      io.to(`complex:${complexId}:staff`).emit('visitor_checkin', {
         visitor: rows[0],
         checked_in_by: req.user.id,
       });
@@ -97,41 +89,31 @@ exports.checkoutVisitor = async (req, res, next) => {
     const { id } = req.params;
     const complexId = req.user.complex_id;
 
-    // Verify the visitor pass belongs to this complex
-    const verifyResult = await query(
-      `SELECT vp.id, vp.status
-       FROM visitor_passes vp
-       JOIN users u ON vp.host_user_id = u.id
-       JOIN user_units uu ON uu.user_id = u.id AND uu.moved_out_at IS NULL
-       JOIN units un ON uu.unit_id = un.id
-       JOIN buildings b ON un.building_id = b.id
-       WHERE vp.id = $1 AND b.complex_id = $2`,
+    const { rows } = await query(
+      `UPDATE visitor_passes vp
+       SET status = 'checked_out', checked_out_at = now()
+       WHERE vp.id = $1
+         AND vp.status = 'checked_in'
+         AND EXISTS (
+           SELECT 1
+           FROM user_units uu
+           JOIN units un ON uu.unit_id = un.id
+           JOIN buildings b ON un.building_id = b.id
+           WHERE uu.user_id = vp.host_user_id
+             AND uu.moved_out_at IS NULL
+             AND b.complex_id = $2
+         )
+       RETURNING vp.*`,
       [id, complexId]
     );
 
-    if (verifyResult.rows.length === 0) {
-      return next(new AppError('Visitor pass not found in your complex', 404));
-    }
-
-    if (verifyResult.rows[0].status !== 'checked_in') {
-      return next(new AppError('Visitor is not checked in', 400));
-    }
-
-    const { rows } = await query(
-      `UPDATE visitor_passes
-       SET status = 'checked_out'
-       WHERE id = $1 AND status = 'checked_in'
-       RETURNING *`,
-      [id]
-    );
-
     if (rows.length === 0) {
-      return next(new AppError('Failed to check out visitor', 500));
+      return next(new AppError('Visitor pass not found in your complex or is no longer checked in', 404));
     }
 
     const io = req.app.get('io');
-    if (io) {
-      io.emit('visitor_checkout', {
+    if (io && complexId) {
+      io.to(`complex:${complexId}:staff`).emit('visitor_checkout', {
         visitor: rows[0],
         checked_out_by: req.user.id,
       });
@@ -154,19 +136,47 @@ exports.getDashboardStats = async (req, res, next) => {
       `SELECT
          COUNT(*) FILTER (WHERE vp.status = 'pending') AS expected,
          COUNT(*) FILTER (WHERE vp.status = 'checked_in') AS inside,
-         COUNT(*) FILTER (WHERE vp.status = 'checked_out') AS left_today,
-         COUNT(*) AS total_today
+         COUNT(*) FILTER (WHERE vp.status = 'overdue') AS overdue,
+         COUNT(*) FILTER (WHERE vp.status = 'checked_out' AND vp.valid_from >= $1) AS left_today,
+         COUNT(*) AS total_tracked
        FROM visitor_passes vp
        JOIN users u ON vp.host_user_id = u.id
        JOIN user_units uu ON uu.user_id = u.id AND uu.moved_out_at IS NULL
        JOIN units un ON uu.unit_id = un.id
        JOIN buildings b ON un.building_id = b.id
-       WHERE vp.valid_from >= $1
+       WHERE (vp.valid_from >= $1 OR vp.status IN ('checked_in', 'overdue'))
          AND b.complex_id = $2`,
       [todayStart.toISOString(), complexId]
     );
 
     res.status(200).json({ success: true, data: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// --- RESOLVE OVERDUE visitor ---
+exports.resolveOverdueVisitor = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const complexId = req.user.complex_id;
+    const visitorService = require('../services/visitor.service');
+    const data = await visitorService.resolveOverdue(id, complexId);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// --- EXTEND VALIDITY ---
+exports.extendVisitorValidity = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const complexId = req.user.complex_id;
+    const { hours } = req.body;
+    const visitorService = require('../services/visitor.service');
+    const data = await visitorService.extendValidity(id, complexId, hours || 24);
+    res.status(200).json({ success: true, data });
   } catch (err) {
     next(err);
   }

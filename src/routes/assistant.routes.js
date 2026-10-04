@@ -7,7 +7,6 @@ const { aiLimiter } = require('../middlewares/rateLimiter.middleware');
 const { validate } = require('../middlewares/validate.middleware');
 const { assistantPromptSchema } = require('../validators/assistant.validator');
 
-console.log('Assistant routes loaded');
 
 router.use(requireAuth);
 router.use(resolveTenant);

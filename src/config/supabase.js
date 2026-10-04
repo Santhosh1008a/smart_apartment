@@ -20,8 +20,7 @@ const supabaseFetch = async (input, init) => {
   } catch (err) {
     logger.error('Supabase network fetch failed', {
       host: parsedUrl.host,
-      message: err.message,
-      cause: err.cause?.message,
+      errorName: err.name,
       code: err.cause?.code,
     });
     throw err;

@@ -1,5 +1,6 @@
 const Sentry = require("@sentry/node");
 require('dotenv').config();
+require('./config/environment').assertProductionEnvironment();
 
 // Initialize Sentry VERY Early
 Sentry.init({
@@ -22,6 +23,10 @@ const addRequestId = (req, res, next) => {
 };
 
 const logger = require('./utils/logger');
+const { errorHandler } = require('./middlewares/error.middleware');
+const { query } = require('./config/db');
+const { authenticateSocket, getAuthorizedSocketRooms } = require('./utils/socketAuth');
+const { verifyAccessToken } = require('./utils/jwt');
 const { globalLimiter } = require('./middlewares/rateLimiter.middleware');
 const { auditLog } = require('./middlewares/audit.middleware');
 const { initRedis } = require('./config/redis');
@@ -33,6 +38,22 @@ initRedis();
 
 const app = express();
 const server = http.createServer(app);
+const configuredCorsOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const corsOrigins = configuredCorsOrigins.length
+  ? [...new Set(configuredCorsOrigins)]
+  : process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173'];
+
+if (process.env.NODE_ENV === 'production' && corsOrigins.length === 0) {
+  throw new Error('CORS_ORIGINS must contain the exact production frontend origin(s).');
+}
+
+const isAllowedOrigin = (origin, callback) => {
+  if (!origin || corsOrigins.includes(origin)) return callback(null, true);
+  return callback(new Error('Origin is not allowed by CORS'));
+};
 
 // Sentry request handler must be the first middleware on the app
 Sentry.setupExpressErrorHandler(app);
@@ -49,32 +70,26 @@ app.use(compression());
 // Setup Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: corsOrigins,
     credentials: true
   }
 });
 
+io.use(authenticateSocket);
+
 io.on('connection', (socket) => {
-  logger.info(`New client connected to WebSocket: ${socket.id}`);
+  for (const room of getAuthorizedSocketRooms(socket.data.user)) socket.join(room);
+  logger.info('Authenticated WebSocket connected', { role: socket.data.user.role });
 
-  // Join user-specific room for targeted notifications
-  socket.on('join_user_room', (userId) => {
-    if (userId) {
-      socket.join(`user:${userId}`);
-      logger.info(`Socket ${socket.id} joined room user:${userId}`);
-    }
-  });
-
-  // Join complex/society room for society-wide broadcasts (emergencies, etc.)
-  socket.on('join_complex_room', (complexId) => {
-    if (complexId) {
-      socket.join(`complex:${complexId}`);
-      logger.info(`Socket ${socket.id} joined room complex:${complexId}`);
-    }
-  });
+  // Drop long-lived connections when the bearer token expires. Clients can
+  // reconnect after refreshing through the HttpOnly refresh-token cookie.
+  const token = socket.handshake.auth?.token;
+  const decoded = verifyAccessToken(token);
+  const expiresIn = decoded?.exp ? decoded.exp * 1000 - Date.now() : 0;
+  const expiryTimer = expiresIn > 0 ? setTimeout(() => socket.disconnect(true), expiresIn) : null;
 
   socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
+    if (expiryTimer) clearTimeout(expiryTimer);
   });
 });
 
@@ -83,16 +98,17 @@ app.set('io', io); // Accessible in controllers via req.app.get('io')
 // Security Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: isAllowedOrigin,
   credentials: true,
 }));
 app.use(globalLimiter);
 
 // Custom Morgan Format with Request ID
 morgan.token('id', req => req.id);
+morgan.token('safe-url', req => req.path);
 app.use(morgan(
   process.env.NODE_ENV === 'production' 
-    ? ':id :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
+    ? ':id ":method :safe-url HTTP/:http-version" :status :response-time ms'
     : 'dev',
   { stream: logger.stream }
 ));
@@ -103,14 +119,16 @@ app.use(auditLog('API Action'));
 const webhookRoutes = require('./routes/webhook.routes');
 app.use('/api/v1/webhooks', webhookRoutes);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// Swagger API Documentation
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// Keep API documentation off production by default.
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+  const swaggerUi = require('swagger-ui-express');
+  const swaggerSpec = require('./config/swagger');
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 
 // Serve static uploaded files
 const path = require('path');
@@ -119,12 +137,11 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Health Check
 app.get('/health', async (req, res) => {
   try {
-    const { query } = require('./config/db');
     await query('SELECT 1 AS ok');
     // Note: If Redis is strictly required for liveness, we'd ping it here too
-    res.status(200).json({ status: 'ok', message: 'Smart Apartment API is healthy and connected to Database' });
+    res.status(200).json({ status: 'ok', message: 'SyncLiving API is healthy and connected to Database' });
   } catch (err) {
-    logger.error('Healthcheck DB Ping Failed', err);
+    logger.error('Healthcheck database ping failed', { errorName: err.name, errorCode: err.code });
     res.status(503).json({ status: 'error', message: 'Database connection unhealthy' });
   }
 });
@@ -140,8 +157,7 @@ const vendorRoutes = require('./routes/vendor.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const parkingRoutes = require('./routes/parking.routes');
 const assistantRoutes = require('./routes/assistant.routes');
-console.log(`GEMINI_API_KEY loaded: ${process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'replace_with_your_gemini_api_key' ? 'YES' : 'NO'}`);
-console.log(`Active Gemini model: ${process.env.GEMINI_MODEL || 'gemini-1.5-flash'}`);
+const privacyRoutes = require('./routes/privacy.routes');
 
 // Mount Routes
 app.use('/api/v1/auth', authRoutes);
@@ -156,18 +172,9 @@ app.use('/api/v1/vendor', vendorRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/parking', parkingRoutes);
 app.use('/api/v1/assistant', assistantRoutes);
-console.log('Assistant API active');
+app.use('/api/v1/privacy', privacyRoutes);
 
-// Global Error Handler
-app.use((err, req, res, next) => {
-  logger.error(`[${req.id || 'NO-ID'}] ${err.stack || err.message}`);
-  const status = err.statusCode || 500;
-  res.status(status).json({
-    success: false,
-    message: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
-});
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
@@ -175,10 +182,16 @@ if (require.main === module) {
   server.listen(PORT, () => {
     logger.info(`Server is running with WebSocket enabled on port ${PORT}`);
 
-    // Start scheduled jobs
-    const { startDueReminderJob, startMonthlyInvoiceJob } = require('./jobs/cron');
-    startDueReminderJob(io);
-    startMonthlyInvoiceJob();
+    // Jobs are opt-in: starting the API against a configured database should
+    // not mutate data or send reminders unless an operator enables a scheduler.
+    if (process.env.ENABLE_IN_PROCESS_SCHEDULER === 'true') {
+      const { startDueReminderJob, startMonthlyInvoiceJob, startVisitorCleanupJob } = require('./jobs/cron');
+      startDueReminderJob(io);
+      startMonthlyInvoiceJob();
+      startVisitorCleanupJob(io);
+    } else {
+      logger.warn('In-process scheduled jobs are disabled; configure a single scheduler or an external job runner.');
+    }
   });
 }
 

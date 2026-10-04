@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Bot, Loader2, MessageCircle, Send, Sparkles, X } from "lucide-react"
+import { Bot, Loader2, Send, Sparkles, X } from "lucide-react"
 import { askAssistant } from "../../api/assistant"
 import { useAuthStore } from "../../store/useAuthStore"
 import { cn } from "../../utils/cn"
+import AIMascot from "../ai-assistant/AIMascot"
 
 const QUICK_SUGGESTIONS = {
   resident: ["Do I have unpaid dues?", "Show today's visitors", "What is my parking status?", "Show my notifications"],
@@ -24,17 +25,21 @@ export default function AIAssistant() {
   const [isOpen, setIsOpen] = useState(false)
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [mascotState, setMascotState] = useState("idle")
   const [lastDebug, setLastDebug] = useState(null)
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: "Hi, I can help summarize your society data.",
+      content: "Hi! I’m the SyncLiving AI Society Assistant.",
     },
   ])
   const user = useAuthStore((state) => state.user)
   const messagesEndRef = useRef(null)
   const messagesScrollRef = useRef(null)
   const inputRef = useRef(null)
+  const mascotTimerRef = useRef(null)
+  const requestControllerRef = useRef(null)
+  const winkDirectionRef = useRef(false)
 
   const role = user?.role || "resident"
   const suggestions = useMemo(() => QUICK_SUGGESTIONS[role] || QUICK_SUGGESTIONS.resident, [role])
@@ -47,6 +52,50 @@ export default function AIAssistant() {
     }
   }, [isOpen, messages, isLoading])
 
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setIsOpen(false)
+    }
+    document.addEventListener("keydown", closeOnEscape)
+    return () => document.removeEventListener("keydown", closeOnEscape)
+  }, [isOpen])
+
+  useEffect(() => () => {
+    window.clearTimeout(mascotTimerRef.current)
+    requestControllerRef.current?.abort()
+  }, [])
+
+  const playMascotSequence = (steps) => {
+    window.clearTimeout(mascotTimerRef.current)
+    let index = 0
+    setMascotState(steps[0].state)
+
+    const advance = () => {
+      index += 1
+      if (index >= steps.length) {
+        setMascotState("idle")
+        return
+      }
+      setMascotState(steps[index].state)
+      mascotTimerRef.current = window.setTimeout(advance, steps[index].duration)
+    }
+
+    mascotTimerRef.current = window.setTimeout(advance, steps[0].duration)
+  }
+
+  const activateMascot = () => {
+    if (isOpen) {
+      inputRef.current?.focus()
+      return
+    }
+    setIsOpen(true)
+    playMascotSequence([
+      { state: "click", duration: 360 },
+      { state: "happy", duration: 700 },
+    ])
+  }
+
   const submitPrompt = async (prompt) => {
     const text = prompt.trim()
     if (!text || isLoading) return
@@ -54,10 +103,17 @@ export default function AIAssistant() {
     setInput("")
     setMessages((current) => [...current, { role: "user", content: text }])
     setIsLoading(true)
+    window.clearTimeout(mascotTimerRef.current)
+    setMascotState("thinking")
+    const controller = new AbortController()
+    requestControllerRef.current = controller
 
     try {
-      const res = await askAssistant(text)
-      const assistantResponse = res?.response?.message || res?.ai_response || "I couldn't format a response for that yet."
+      const res = await askAssistant(text, { signal: controller.signal, timeout: 60000 })
+      const assistantResponse = res?.response?.message || res?.ai_response
+      if (!res?.success || typeof assistantResponse !== "string" || !assistantResponse.trim()) {
+        throw new Error("The assistant returned no usable response.")
+      }
       setLastDebug(res?.debug ? {
         intent: res.intent || "unknown",
         rows: res.rows ?? 0,
@@ -73,16 +129,27 @@ export default function AIAssistant() {
           content: assistantResponse,
         },
       ])
+      winkDirectionRef.current = !winkDirectionRef.current
+      playMascotSequence([
+        { state: "success", duration: 900 },
+        { state: winkDirectionRef.current ? "wink-left" : "wink-right", duration: 600 },
+      ])
     } catch (err) {
+      if (controller.signal.aborted) return
       setLastDebug(null)
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
-          content: err?.response?.data?.message || "Assistant API request failed. Check console logs.",
+          content: err?.response?.data?.message
+            || (err?.code === "ECONNABORTED"
+              ? "The assistant request timed out. Please try again."
+              : "The assistant is unavailable right now. Please try again."),
         },
       ])
+      playMascotSequence([{ state: "error", duration: 1400 }])
     } finally {
+      if (requestControllerRef.current === controller) requestControllerRef.current = null
       setIsLoading(false)
     }
   }
@@ -94,17 +161,7 @@ export default function AIAssistant() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className={cn(
-          "fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[80] h-14 w-14 rounded-full bg-gradient-to-br text-white shadow-xl shadow-slate-900/20 transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-          accent
-        )}
-        aria-label="Open AI assistant"
-      >
-        <MessageCircle className="mx-auto h-6 w-6" />
-      </button>
+      <AIMascot state={mascotState} onActivate={activateMascot} />
 
       {isOpen && (
         <div className="fixed inset-0 z-[90] pointer-events-none">
@@ -113,7 +170,12 @@ export default function AIAssistant() {
             onClick={() => setIsOpen(false)}
           />
 
-          <section className="absolute inset-x-2 bottom-2 pointer-events-auto sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[420px]">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="syncliving-assistant-title"
+            className="absolute inset-x-2 bottom-2 pointer-events-auto sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[420px]"
+          >
             <div className="flex h-[min(720px,calc(100dvh-1rem))] min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl sm:h-[min(720px,calc(100dvh-3rem))]">
               <header className="flex flex-shrink-0 items-center justify-between border-b border-border px-4 py-3">
                 <div className="flex min-w-0 items-center gap-3">
@@ -121,7 +183,7 @@ export default function AIAssistant() {
                     <Bot className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <h2 className="truncate text-sm font-semibold text-foreground">Society Assistant</h2>
+                    <h2 id="syncliving-assistant-title" className="truncate text-sm font-semibold text-foreground">SyncLiving AI Assistant</h2>
                     <p className="truncate text-xs capitalize text-gray-500">{role.replace("_", " ")}</p>
                   </div>
                 </div>

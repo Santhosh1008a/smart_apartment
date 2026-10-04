@@ -39,7 +39,7 @@ async function notify(io, userId, type, title, message, metadata = {}) {
 
     return notification;
   } catch (err) {
-    logger.error('Notification service error:', err);
+    logger.error('Notification service error', { errorName: err.name, errorCode: err.code });
     // Don't throw — notifications should never crash the main flow
     return null;
   }

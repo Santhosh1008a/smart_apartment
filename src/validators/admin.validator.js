@@ -7,6 +7,14 @@ const createComplexSchema = Joi.object({
   address: Joi.string().trim().max(500).allow('', null),
 });
 
+const createAdminSchema = Joi.object({
+  email: Joi.string().trim().lowercase().email().required(),
+  phone: Joi.string().trim().pattern(/^[6-9]\d{9}$/).required(),
+  password: Joi.string().min(12).max(128).required(),
+  full_name: Joi.string().trim().min(2).max(255).required(),
+  complex_id: Joi.string().pattern(uuidPattern).required(),
+});
+
 const createBuildingSchema = Joi.object({
   name: Joi.string().trim().min(1).max(255).required(),
   total_floors: Joi.number().integer().min(1).max(200).default(1),
@@ -77,6 +85,7 @@ const listUsersQuerySchema = Joi.object({
 
 module.exports = {
   createComplexSchema,
+  createAdminSchema,
   createBuildingSchema,
   createUnitSchema,
   bulkCreateUnitsSchema,
@@ -85,4 +94,3 @@ module.exports = {
   updateUserRoleSchema,
   listUsersQuerySchema,
 };
-

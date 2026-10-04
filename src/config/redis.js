@@ -6,7 +6,7 @@ let redisClient;
 const initRedis = async () => {
   if (process.env.REDIS_URL) {
     redisClient = createClient({ url: process.env.REDIS_URL });
-    redisClient.on('error', (err) => logger.error('Redis Client Error', err));
+    redisClient.on('error', (err) => logger.error('Redis client error', { errorName: err.name, errorCode: err.code }));
     await redisClient.connect();
     logger.info('Connected to Redis Cache');
   } else {

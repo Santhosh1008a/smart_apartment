@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
 const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
-const { resolveTenant, requireTenant } = require('../middlewares/tenant.middleware');
+const { resolveTenant, requireTenantForAdmins } = require('../middlewares/tenant.middleware');
 const { validate, validateQuery } = require('../middlewares/validate.middleware');
 const {
   createComplexSchema,
@@ -19,6 +19,7 @@ const {
 router.use(requireAuth);
 router.use(requireRole(['admin', 'super_admin']));
 router.use(resolveTenant);
+router.use(requireTenantForAdmins);
 
 router.get('/dashboard/stats', adminController.getDashboardStats);
 router.get('/payment-status', adminController.getPaymentStatus);

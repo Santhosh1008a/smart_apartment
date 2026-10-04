@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { createElement, useCallback, useState, useEffect } from "react"
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Card"
 import { Badge } from "../../components/ui/Badge"
 import { Button } from "../../components/ui/Button"
@@ -44,7 +44,7 @@ export default function AdminVendorRequests() {
   const [selectedVendorId, setSelectedVendorId] = useState("")
   const [isAssigning, setIsAssigning] = useState(false)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true)
       const [reqRes, venRes] = await Promise.all([
@@ -58,9 +58,9 @@ export default function AdminVendorRequests() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [filterStatus])
 
-  useEffect(() => { fetchData() }, [filterStatus])
+  useEffect(() => { fetchData() }, [fetchData])
 
   const openAssignModal = (req) => {
     setSelectedRequest(req)
@@ -117,11 +117,11 @@ export default function AdminVendorRequests() {
           { label: "Assigned", count: stats.assigned, icon: UserPlus, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" },
           { label: "In Progress", count: stats.in_progress, icon: Clock, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-900/20" },
           { label: "Completed", count: stats.completed, icon: CheckCircle2, color: "text-green-500", bg: "bg-green-50 dark:bg-green-900/20" },
-        ].map(({ label, count, icon: Icon, color, bg }) => (
+        ].map(({ label, count, icon, color, bg }) => (
           <Card key={label} className="border-none shadow-md">
             <CardContent className="p-5 flex items-center gap-4">
               <div className={`p-3 rounded-xl ${bg}`}>
-                <Icon className={`w-5 h-5 ${color}`} />
+                {createElement(icon, { className: `w-5 h-5 ${color}` })}
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{count}</p>

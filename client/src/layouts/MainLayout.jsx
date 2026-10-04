@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Outlet, NavLink, useNavigate, Link, useLocation } from "react-router-dom"
 import { useAuthStore } from "../store/useAuthStore"
+import { logoutUser } from "../api/auth"
 import { 
-  Building2, 
   LayoutDashboard, 
   Users, 
   CreditCard, 
@@ -18,6 +18,8 @@ import {
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
 import AIAssistant from "../components/layout/AIAssistant"
+import UserAvatar from "../components/layout/UserAvatar"
+import Logo from "../components/Logo"
 
 const PAGE_TITLES = {
   "/": "Dashboard",
@@ -35,7 +37,8 @@ export default function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await logoutUser() } catch { /* Local logout still succeeds if the API is unavailable. */ }
     logout()
     navigate("/login")
   }
@@ -66,13 +69,10 @@ export default function MainLayout() {
         "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-300 lg:translate-x-0 lg:static lg:inset-auto flex flex-col shadow-xl lg:shadow-none",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="flex items-center justify-between h-16 border-b border-border px-4 shrink-0">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-hover rounded-lg flex items-center justify-center shadow-md shadow-primary/20">
-              <Building2 className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">SmartApt</span>
-          </div>
+        <div className="flex items-center justify-between h-28 border-b border-border px-4 shrink-0">
+          <Link to="/" onClick={() => setIsSidebarOpen(false)} aria-label="Go to SyncLiving dashboard" className="flex h-full items-center">
+            <Logo className="h-[100px] w-[96px]" />
+          </Link>
           <button className="lg:hidden text-gray-400 hover:text-foreground p-1" onClick={() => setIsSidebarOpen(false)}>
             <X className="w-5 h-5" />
           </button>
@@ -118,11 +118,7 @@ export default function MainLayout() {
             onClick={() => setIsSidebarOpen(false)}
             className="flex items-center mb-3 px-2 py-2 rounded-lg hover:bg-secondary transition-colors group"
           >
-            <img 
-              src={user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id || "fallback"}`}
-              alt="Avatar" 
-              className="w-10 h-10 rounded-full border border-border shadow-sm flex-shrink-0" 
-            />
+            <UserAvatar user={user} src={user?.avatar_url} className="h-10 w-10 rounded-full border border-border shadow-sm" />
             <div className="ml-3 truncate flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{user?.full_name}</p>
               <p className="text-xs text-gray-500 truncate capitalize">{user?.role}{unit ? ` • ${unit.unit_number}` : ''}</p>

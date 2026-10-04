@@ -78,8 +78,7 @@ exports.createAdmin = async (req, res, next) => {
       return next(new AppError('User with this email or phone already exists', 400));
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const password_hash = await bcrypt.hash(password, salt);
+    const password_hash = await bcrypt.hash(password, 12);
 
     const { rows } = await query(
       `INSERT INTO users (email, phone, password_hash, full_name, role, complex_id) 

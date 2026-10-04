@@ -84,6 +84,11 @@ exports.updateUserRole = async (req, res, next) => {
     const { id } = req.params;
     const { role, is_active, vendor_category } = req.body;
     const { complexId } = req;
+    const isApartmentAdmin = req.user.role === 'admin';
+
+    if (isApartmentAdmin && !complexId) {
+      return next(new AppError('Apartment administrators must be assigned to a complex', 403));
+    }
 
     // Prevent assigning super_admin role
     if (role === 'super_admin') {
@@ -126,9 +131,15 @@ exports.updateUserRole = async (req, res, next) => {
     }
 
     params.push(id);
+    let where = `id = $${params.length}`;
+    if (complexId) {
+      params.push(complexId);
+      where += ` AND complex_id = $${params.length}`;
+    }
+    if (isApartmentAdmin) where += ` AND role <> 'super_admin'`;
     const { rows } = await query(
       `UPDATE users SET ${updates.join(', ')}, updated_at = now()
-       WHERE id = $${params.length}
+       WHERE ${where}
        RETURNING id, email, full_name, role, is_active, vendor_category, complex_id`,
       params
     );
@@ -248,21 +259,19 @@ exports.bulkCreateUnits = async (req, res, next) => {
 exports.listUnits = async (req, res, next) => {
   try {
     const { complexId } = req;
-    let sql = `
-      SELECT u.id, u.unit_number, u.type, u.status, b.name as building_name 
-      FROM units u 
-      JOIN buildings b ON u.building_id = b.id
-    `;
-    const params = [];
 
-    if (complexId) {
-      sql += ` WHERE b.complex_id = $1`;
-      params.push(complexId);
+    if (!complexId) {
+      return next(new AppError('Complex scope is required', 403));
     }
-    
-    sql += ` ORDER BY b.name, u.unit_number`;
 
-    const { rows } = await query(sql, params);
+    const { rows } = await query(
+      `SELECT u.id, u.unit_number, u.type, u.status, b.name as building_name
+       FROM units u
+       JOIN buildings b ON u.building_id = b.id
+       WHERE b.complex_id = $1
+       ORDER BY b.name, u.unit_number`,
+      [complexId]
+    );
     res.status(200).json({ success: true, data: rows });
   } catch (err) {
     next(err);
@@ -517,74 +526,22 @@ exports.getAnalyticsTrends = async (req, res, next) => {
   }
 };
 
-// --- ASSIGN vendor to a service request (admin only, complex-scoped) ---
-exports.assignVendorToRequest = async (req, res, next) => {
-  try {
-    const { id } = req.params; // vendor_request id
-    const { vendor_id } = req.body;
-    const { complexId } = req;
-
-    if (!vendor_id) {
-      return next(new AppError('vendor_id is required', 400));
-    }
-
-    // Verify the vendor belongs to this complex and has vendor role
-    const vendorCheck = await query(
-      `SELECT id, full_name FROM users WHERE id = $1 AND role = 'vendor' AND complex_id = $2 AND is_active = true`,
-      [vendor_id, complexId]
-    );
-    if (vendorCheck.rows.length === 0) {
-      return next(new AppError('Vendor not found in your complex', 404));
-    }
-
-    // Verify the request belongs to this complex
-    const requestCheck = await query(
-      `SELECT vr.id, vr.status
-       FROM vendor_requests vr
-       JOIN units un ON vr.unit_id = un.id
-       JOIN buildings b ON un.building_id = b.id
-       WHERE vr.id = $1 AND b.complex_id = $2`,
-      [id, complexId]
-    );
-    if (requestCheck.rows.length === 0) {
-      return next(new AppError('Service request not found in your complex', 404));
-    }
-
-    // Assign the vendor and update status to 'assigned'
-    const { rows } = await query(
-      `UPDATE vendor_requests
-       SET assigned_vendor_id = $1, status = 'assigned'
-       WHERE id = $2
-       RETURNING *`,
-      [vendor_id, id]
-    );
-
-    // Notify the vendor about the new assignment
-    const io = req.app.get('io');
-    const { notify } = require('../services/notification.service');
-    notify(io, vendor_id, 'job_assigned',
-      'New Job Assigned',
-      `You have been assigned a new ${rows[0].category} job.`,
-      { request_id: rows[0].id, category: rows[0].category, priority: rows[0].priority }
-    ).catch(() => {});
-
-    res.status(200).json({ success: true, data: rows[0] });
-  } catch (err) {
-    next(err);
-  }
-};
-
 // --- LIST vendors in admin's complex ---
 exports.listVendorsInComplex = async (req, res, next) => {
   try {
     const { complexId } = req;
-
+    const isGlobalSuperAdmin = req.user.role === 'super_admin' && !complexId;
+    const params = [];
+    const scopeClause = complexId ? `AND complex_id = $${params.push(complexId)}` : '';
+    if (!complexId && !isGlobalSuperAdmin) {
+      return next(new AppError('Complex scope is required', 403));
+    }
     const { rows } = await query(
-      `SELECT id, full_name, email, phone
+      `SELECT id, full_name, email, phone, vendor_category, is_active
        FROM users
-       WHERE role = 'vendor' AND complex_id = $1 AND is_active = true
-       ORDER BY full_name`,
-      [complexId]
+       WHERE role = 'vendor' AND is_active = true ${scopeClause}
+       ORDER BY vendor_category, full_name`,
+      params
     );
 
     res.status(200).json({ success: true, data: rows });
@@ -597,13 +554,19 @@ exports.listVendorsInComplex = async (req, res, next) => {
 exports.listSecurityInComplex = async (req, res, next) => {
   try {
     const { complexId } = req;
+    const isGlobalSuperAdmin = req.user.role === 'super_admin' && !complexId;
+    if (!complexId && !isGlobalSuperAdmin) {
+      return next(new AppError('Complex scope is required', 403));
+    }
+    const params = [];
+    const scopeClause = complexId ? `AND complex_id = $${params.push(complexId)}` : '';
 
     const { rows } = await query(
       `SELECT id, full_name, email, phone
        FROM users
-       WHERE role = 'security' AND complex_id = $1 AND is_active = true
+       WHERE role = 'security' AND is_active = true ${scopeClause}
        ORDER BY full_name`,
-      [complexId]
+      params
     );
 
     res.status(200).json({ success: true, data: rows });
@@ -612,59 +575,10 @@ exports.listSecurityInComplex = async (req, res, next) => {
   }
 };
 
-// --- UPDATE unit status (admin) ---
-exports.updateUnitStatus = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const { complexId } = req;
-
-    // Verify unit belongs to admin's complex
-    const unitCheck = await query(
-      `SELECT un.id FROM units un
-       JOIN buildings b ON un.building_id = b.id
-       WHERE un.id = $1 AND b.complex_id = $2`,
-      [id, complexId]
-    );
-    if (unitCheck.rows.length === 0) {
-      return next(new AppError('Unit not found in your complex', 404));
-    }
-
-    const { rows } = await query(
-      `UPDATE units SET status = $1 WHERE id = $2 RETURNING *`,
-      [status, id]
-    );
-
-    res.status(200).json({ success: true, data: rows[0] });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// --- LIST vendor users scoped to admin's complex ---
-exports.listVendorsInComplex = async (req, res, next) => {
-  try {
-    const { complexId } = req;
-    let sql = `SELECT id, full_name, email, phone, vendor_category, is_active
-               FROM users
-               WHERE role = 'vendor' AND is_active = true`;
-    const params = [];
-    if (complexId) {
-      sql += ` AND complex_id = $1`;
-      params.push(complexId);
-    }
-    sql += ` ORDER BY vendor_category, full_name`;
-    const { rows } = await query(sql, params);
-    res.status(200).json({ success: true, data: rows });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// --- ASSIGN a vendor user to a vendor_request ---
+// --- ASSIGN a vendor to a request in the same complex ---
 exports.assignVendorToRequest = async (req, res, next) => {
   try {
-    const { id } = req.params;          // vendor_request id
+    const { id } = req.params;
     const { vendor_id } = req.body;
     const { complexId } = req;
 
@@ -672,24 +586,22 @@ exports.assignVendorToRequest = async (req, res, next) => {
       return next(new AppError('vendor_id is required', 400));
     }
 
-    // Verify user has vendor role and is active (no complex restriction — vendors can serve any complex)
-    const vendorCheck = await query(
-      `SELECT id, full_name, vendor_category FROM users WHERE id = $1 AND role = 'vendor' AND is_active = true`,
-      [vendor_id]
-    );
-    if (vendorCheck.rows.length === 0) {
-      return next(new AppError('Vendor not found', 404));
-    }
-
     const { rows } = await query(
-      `UPDATE vendor_requests 
+      `UPDATE vendor_requests vr
        SET assigned_vendor_id = $1, status = 'assigned'
-       WHERE id = $2 RETURNING *`,
-      [vendor_id, id]
+       FROM units un
+       JOIN buildings b ON b.id = un.building_id
+       JOIN users vendor ON vendor.id = $1
+         AND vendor.role = 'vendor' AND vendor.is_active = true
+         AND vendor.complex_id = b.complex_id
+       WHERE vr.id = $2 AND vr.unit_id = un.id
+         AND ($3::uuid IS NULL OR b.complex_id = $3)
+       RETURNING vr.*`,
+      [vendor_id, id, complexId || null]
     );
 
     if (rows.length === 0) {
-      return next(new AppError('Vendor request not found', 404));
+      return next(new AppError('Active vendor or service request not found in the selected complex', 404));
     }
 
     // Notify the assigned vendor
@@ -701,11 +613,7 @@ exports.assignVendorToRequest = async (req, res, next) => {
       { request_id: rows[0].id, category: rows[0].category }
     ).catch(() => {});
 
-    res.status(200).json({
-      success: true,
-      message: `Request assigned to ${vendorCheck.rows[0].full_name}`,
-      data: rows[0],
-    });
+    res.status(200).json({ success: true, data: rows[0] });
   } catch (err) {
     next(err);
   }

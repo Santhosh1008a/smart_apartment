@@ -59,7 +59,7 @@ function startDueReminderJob(io) {
 
       logger.info(`[CRON] Due reminder job completed. Sent ${rows.length} notification(s).`);
     } catch (err) {
-      logger.error('[CRON] Due reminder job failed:', err);
+      logger.error('[CRON] Due reminder job failed', { errorName: err.name, errorCode: err.code });
     }
   }, {
     timezone: 'Asia/Kolkata',
@@ -78,7 +78,16 @@ function startMonthlyInvoiceJob() {
   cron.schedule('0 6 1 * *', async () => {
     logger.info('[CRON] Running monthly invoice generation...');
 
-    const defaultAmount = parseFloat(process.env.MONTHLY_MAINTENANCE_AMOUNT) || 2000;
+    if (process.env.ENABLE_UNIFORM_MONTHLY_MAINTENANCE_INVOICES !== 'true') {
+      logger.warn('[CRON] Monthly invoice generation skipped: explicit uniform-invoice opt-in is disabled.');
+      return;
+    }
+
+    const configuredAmount = Number(process.env.MONTHLY_MAINTENANCE_AMOUNT);
+    if (!Number.isFinite(configuredAmount) || configuredAmount <= 0) {
+      logger.warn('[CRON] Monthly invoice generation skipped: MONTHLY_MAINTENANCE_AMOUNT is not configured with a positive value.');
+      return;
+    }
 
     try {
       // Find all occupied units
@@ -108,7 +117,7 @@ function startMonthlyInvoiceJob() {
           await query(
             `INSERT INTO invoices (unit_id, type, amount, due_date, status, created_by)
              VALUES ($1, 'maintenance', $2, $3, 'sent', NULL)`,
-            [unit.unit_id, defaultAmount, dueDateStr]
+            [unit.unit_id, configuredAmount, dueDateStr]
           );
           created++;
         }
@@ -116,7 +125,7 @@ function startMonthlyInvoiceJob() {
 
       logger.info(`[CRON] Monthly invoice generation completed. Created ${created} invoice(s) for ${units.length} occupied unit(s).`);
     } catch (err) {
-      logger.error('[CRON] Monthly invoice generation failed:', err);
+      logger.error('[CRON] Monthly invoice generation failed', { errorName: err.name, errorCode: err.code });
     }
   }, {
     timezone: 'Asia/Kolkata',
@@ -125,4 +134,44 @@ function startMonthlyInvoiceJob() {
   logger.info('[CRON] Monthly invoice generation job scheduled (1st of month, 6:00 AM IST).');
 }
 
-module.exports = { startDueReminderJob, startMonthlyInvoiceJob };
+/**
+ * Visitor Cleanup — runs every 5 minutes
+ *
+ * Marks expired visitors as overdue or expired.
+ */
+function startVisitorCleanupJob(io) {
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      // 1. Mark checked_in visitors as overdue if their valid_until has passed
+      const overdueRes = await query(`
+        UPDATE visitor_passes
+        SET status = 'overdue'
+        WHERE status = 'checked_in' AND valid_until < NOW()
+        RETURNING *
+      `);
+
+      for (const row of overdueRes.rows) {
+        await notify(io, row.host_user_id, 'visitor_overdue',
+          'Visitor Checkout Overdue',
+          `Your visitor ${row.visitor_name} is still marked inside beyond the approved visit duration.`,
+          { visitor_pass_id: row.id, visitor_name: row.visitor_name }
+        ).catch(() => {});
+      }
+
+      // 2. Mark pending visitors as expired if their valid_until has passed
+      const expiredRes = await query(`
+        UPDATE visitor_passes
+        SET status = 'expired'
+        WHERE status = 'pending' AND valid_until < NOW()
+        RETURNING *
+      `);
+
+    } catch (err) {
+      logger.error('[CRON] Visitor cleanup job failed', { errorName: err.name, errorCode: err.code });
+    }
+  });
+
+  logger.info('[CRON] Visitor cleanup job scheduled (Every 5 minutes).');
+}
+
+module.exports = { startDueReminderJob, startMonthlyInvoiceJob, startVisitorCleanupJob };

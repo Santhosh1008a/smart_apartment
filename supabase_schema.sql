@@ -1,5 +1,5 @@
 -- ============================================================
--- Smart Apartment Management System — Supabase Schema
+-- SyncLiving — Smart Society Management Platform — Supabase Schema
 -- Run this in: Supabase Dashboard → SQL Editor → New Query
 -- ============================================================
 
@@ -87,8 +87,10 @@ CREATE TABLE visitor_passes (
   valid_from     TIMESTAMPTZ  NOT NULL DEFAULT now(),
   valid_until    TIMESTAMPTZ  NOT NULL,
   status         VARCHAR(20)  NOT NULL DEFAULT 'pending'
-                 CHECK (status IN ('pending','checked_in','checked_out','cancelled')),
+                 CHECK (status IN ('pending','approved','checked_in','checked_out','overdue','expired','cancelled')),
   checked_in_at  TIMESTAMPTZ,
+  checked_out_at TIMESTAMPTZ,
+  is_overnight   BOOLEAN      NOT NULL DEFAULT false,
   created_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 

@@ -8,9 +8,9 @@ const createPassSchema = Joi.object({
     .messages({ 'string.pattern.base': 'Visitor phone must be a 10-digit number' }),
   purpose: Joi.string().trim().max(500).allow('', null),
   valid_from: Joi.date().iso().default(() => new Date()),
-  valid_until: Joi.date().iso().greater(Joi.ref('valid_from')).required().messages({
+  is_overnight: Joi.boolean().default(false),
+  valid_until: Joi.date().iso().greater(Joi.ref('valid_from')).optional().messages({
     'date.greater': 'valid_until must be after valid_from',
-    'any.required': 'valid_until is required',
   }),
 });
 

@@ -11,6 +11,18 @@ class VisitorService {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+
+      let validUntil = data.valid_until;
+      if (!validUntil) {
+        const fromDate = new Date(data.valid_from || Date.now());
+        if (data.is_overnight) {
+          fromDate.setHours(fromDate.getHours() + 24); // +24 hours
+        } else {
+          fromDate.setHours(23, 59, 59, 999); // end of today
+        }
+        validUntil = fromDate.toISOString();
+      }
+
       const pass = await visitorRepo.createPass(
         client,
         host_id,
@@ -18,11 +30,12 @@ class VisitorService {
         data.visitor_phone,
         data.purpose,
         data.valid_from,
-        data.valid_until
+        validUntil,
+        data.is_overnight || false
       );
 
       const token = generateToken();
-      const qrCode = await visitorRepo.createQRCode(client, pass.id, token, data.valid_until);
+      const qrCode = await visitorRepo.createQRCode(client, pass.id, token, validUntil);
 
       await client.query('COMMIT');
 
@@ -73,39 +86,44 @@ class VisitorService {
     if (!['security', 'admin', 'super_admin'].includes(userRole)) {
       throw new AppError('Forbidden', 403);
     }
-
-    const qr = await visitorRepo.findQRByToken(token);
-    if (!qr) throw new AppError('Invalid QR Code', 404);
-
-    if (new Date() > new Date(qr.expires_at)) {
-      throw new AppError('QR Code has expired', 400);
-    }
-
-    if (qr.scanned_count >= qr.max_scans) {
-      throw new AppError('QR Code has already been used maximum times', 400);
-    }
-
-    const pass = await visitorRepo.findPassByIdForComplex(qr.visitor_pass_id, complexId);
-    if (!pass) throw new AppError('Visitor pass not found in your society', 404);
-    if (pass.status === 'cancelled') {
-        throw new AppError('Visitor pass was cancelled', 400);
+    if (userRole !== 'super_admin' && !complexId) {
+      throw new AppError('You must be assigned to a society to verify visitor passes.', 403);
     }
 
     const client = await getClient();
     try {
-        await client.query('BEGIN');
-        const checkedIn = await visitorRepo.checkInVisitor(client, pass.id, complexId);
-        if (!checkedIn) {
-          await client.query('ROLLBACK');
-          throw new AppError('Visitor pass cannot be checked in', 400);
-        }
-        await visitorRepo.incrementQRScan(client, qr.id);
-        await client.query('COMMIT');
-    } catch(err) {
+      await client.query('BEGIN');
+      const qr = await visitorRepo.findQRByToken(client, token);
+      if (!qr) throw new AppError('Invalid QR Code', 404);
+
+      if (new Date() > new Date(qr.expires_at)) {
+        throw new AppError('QR Code has expired', 400);
+      }
+
+      if (qr.scanned_count >= qr.max_scans) {
+        throw new AppError('QR Code has already been used maximum times', 400);
+      }
+
+      const pass = await visitorRepo.findPassByIdForComplex(client, qr.visitor_pass_id, complexId);
+      if (!pass) throw new AppError('Visitor pass not found in your society', 404);
+      if (pass.status === 'cancelled') {
+        throw new AppError('Visitor pass was cancelled', 400);
+      }
+
+      const checkedIn = await visitorRepo.checkInVisitor(client, pass.id, complexId);
+      if (!checkedIn) throw new AppError('Visitor pass cannot be checked in', 400);
+
+      await visitorRepo.incrementQRScan(client, qr.id);
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
         await client.query('ROLLBACK');
-        throw err;
+      } catch {
+        // Preserve the original failure if the transaction has already ended.
+      }
+      throw err;
     } finally {
-        client.release();
+      client.release();
     }
 
     return { message: 'Visitor successfully checked in' };
@@ -122,8 +140,25 @@ class VisitorService {
   }
 
   async cancel(pass_id, userId, userRole, complexId) {
+    if (!['resident', 'admin', 'super_admin'].includes(userRole)) {
+      throw new AppError('Forbidden', 403);
+    }
+    if (userRole === 'admin' && !complexId) {
+      throw new AppError('Apartment administrators must be assigned to a complex.', 403);
+    }
     const pass = await visitorRepo.cancelPass(pass_id, userId, userRole, complexId);
     if (!pass) throw new AppError('Visitor pass not found or cannot be cancelled', 400);
+    return pass;
+  }
+  async extendValidity(pass_id, complexId, hours = 24) {
+    const pass = await visitorRepo.extendPassValidity(pass_id, complexId, hours);
+    if (!pass) throw new AppError('Visitor pass not found or cannot be extended', 400);
+    return pass;
+  }
+
+  async resolveOverdue(pass_id, complexId) {
+    const pass = await visitorRepo.resolveOverduePass(pass_id, complexId);
+    if (!pass) throw new AppError('Visitor pass not found or is not overdue', 400);
     return pass;
   }
 }

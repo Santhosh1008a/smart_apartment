@@ -20,7 +20,7 @@ const loadRazorpayScript = () => {
 }
 
 export default function Payments() {
-  const { user, complex, building, unit } = useAuthStore()
+  const { user, building, unit } = useAuthStore()
   const [isPayModalOpen, setIsPayModalOpen] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -35,7 +35,7 @@ export default function Payments() {
       if (res.success) {
         setInvoices(res.data)
       }
-    } catch (err) {
+    } catch {
       toast.error("Failed to load invoices")
     } finally {
       setIsLoading(false)
@@ -99,7 +99,7 @@ export default function Payments() {
                 setSelectedInvoice(null)
               }, 3000)
             }
-          } catch (err) {
+          } catch {
             toast.error("Payment verification failed")
             setIsProcessing(false)
           }
@@ -115,7 +115,7 @@ export default function Payments() {
       }
 
       const paymentObject = new window.Razorpay(options)
-      paymentObject.on('payment.failed', function (response){
+      paymentObject.on('payment.failed', function (){
         toast.error("Payment failed. Please try again.")
         setIsProcessing(false)
       })

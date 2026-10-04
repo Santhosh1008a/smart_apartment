@@ -25,13 +25,21 @@ exports.handleRazorpayWebhook = async (req, res) => {
     if (!signature) {
       return res.status(400).send('Missing signature header');
     }
+    if (!Buffer.isBuffer(req.body)) {
+      return res.status(400).send('Missing webhook payload');
+    }
 
     const expectedSignature = crypto
       .createHmac('sha256', secret)
       .update(req.body) // raw buffer from express.raw()
       .digest('hex');
 
-    if (signature !== expectedSignature) {
+    const suppliedSignature = /^[a-f0-9]{64}$/i.test(signature)
+      ? Buffer.from(signature, 'hex')
+      : Buffer.alloc(0);
+    const expectedSignatureBuffer = Buffer.from(expectedSignature, 'hex');
+    if (suppliedSignature.length !== expectedSignatureBuffer.length
+      || !crypto.timingSafeEqual(suppliedSignature, expectedSignatureBuffer)) {
       logger.warn('Webhook signature verification failed');
       return res.status(400).send('Invalid signature');
     }
@@ -45,7 +53,13 @@ exports.handleRazorpayWebhook = async (req, res) => {
       return res.status(200).send('OK');
     }
 
-    const paymentEntity = event.payload.payment.entity;
+    const paymentEntity = event?.payload?.payment?.entity;
+    if (!paymentEntity || paymentEntity.status !== 'captured'
+      || paymentEntity.currency !== 'INR'
+      || !Number.isSafeInteger(Number(paymentEntity.amount))) {
+      logger.warn('Webhook captured payment payload is incomplete or invalid');
+      return res.status(400).send('Invalid payment data');
+    }
     const rzOrderId = paymentEntity.order_id;
     const rzPaymentId = paymentEntity.id;
 
@@ -60,25 +74,33 @@ exports.handleRazorpayWebhook = async (req, res) => {
 
     // Find the matching order and lock it
     const txnCheck = await client.query(
-      `SELECT rt.id AS txn_id, rt.payment_id, rt.rz_payment_id
+      `SELECT rt.id AS txn_id, rt.payment_id, rt.rz_payment_id, p.amount AS expected_amount
        FROM razorpay_txns rt
-       WHERE rt.rz_order_id = $1 FOR UPDATE`,
+       JOIN payments p ON p.id = rt.payment_id
+       WHERE rt.rz_order_id = $1 FOR UPDATE OF rt, p`,
       [rzOrderId]
     );
 
     if (txnCheck.rows.length === 0) {
       await client.query('ROLLBACK');
-      logger.warn(`Webhook: No matching order found for ${rzOrderId}`);
+      logger.warn('Webhook received an unmatched order');
       return res.status(200).send('Order not found — ignoring');
     }
 
-    const { txn_id, payment_id, rz_payment_id: existing_payment_id } = txnCheck.rows[0];
+    const { txn_id, payment_id, rz_payment_id: existing_payment_id, expected_amount } = txnCheck.rows[0];
 
     // --- Step 4: Idempotency check inside the lock ---
     if (existing_payment_id) {
       await client.query('ROLLBACK');
-      logger.info(`Webhook duplicate ignored (already verified): ${rzPaymentId}`);
+      logger.info('Webhook duplicate ignored (already verified)');
       return res.status(200).send('Already processed');
+    }
+
+    const expectedAmountInPaisa = Math.round(Number(expected_amount) * 100);
+    if (Number(paymentEntity.amount) !== expectedAmountInPaisa) {
+      await client.query('ROLLBACK');
+      logger.warn('Webhook payment amount did not match the stored payment amount');
+      return res.status(400).send('Payment amount mismatch');
     }
 
     // 5a. Update razorpay_txns with payment ID
@@ -105,7 +127,7 @@ exports.handleRazorpayWebhook = async (req, res) => {
     }
 
     await client.query('COMMIT');
-    logger.info(`Webhook processed successfully: order=${rzOrderId} payment=${rzPaymentId}`);
+    logger.info('Webhook processed successfully');
 
     // --- Step 5: Fire-and-forget notification ---
     try {
@@ -118,7 +140,7 @@ exports.handleRazorpayWebhook = async (req, res) => {
       if (userResult.rows.length > 0) {
         const { user_id, amount, type } = userResult.rows[0];
         const { notify } = require('../services/notification.service');
-        const io = global.__io; // Set in app.js if needed
+        const io = req.app.get('io');
         notify(io, user_id, 'payment_success',
           'Payment Successful',
           `Your ${type} payment of ₹${amount} has been confirmed.`,
@@ -141,7 +163,7 @@ exports.handleRazorpayWebhook = async (req, res) => {
       return res.status(200).send('Already processed');
     }
 
-    logger.error('Webhook processing error:', err);
+    logger.error('Webhook processing error', { errorName: err.name, errorCode: err.code });
     // Return 200 to prevent Razorpay from retrying on our bugs
     // Only return 5xx for truly transient errors
     res.status(500).send('Internal error');

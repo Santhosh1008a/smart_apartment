@@ -13,5 +13,7 @@ router.get('/visitors/today', securityController.getVisitorsToday);
 router.get('/dashboard/stats', securityController.getDashboardStats);
 router.post('/visitor/:id/checkin', securityController.checkinVisitor);
 router.post('/visitor/:id/checkout', securityController.checkoutVisitor);
+router.post('/visitor/:id/resolve-overdue', securityController.resolveOverdueVisitor);
+router.post('/visitor/:id/extend', securityController.extendVisitorValidity);
 
 module.exports = router;

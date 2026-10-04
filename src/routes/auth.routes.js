@@ -4,7 +4,7 @@ const authController = require('../controllers/auth.controller');
 const { requireAuth } = require('../middlewares/auth.middleware');
 const { validate } = require('../middlewares/validate.middleware');
 const { authLimiter } = require('../middlewares/rateLimiter.middleware');
-const { registerSchema, loginSchema, refreshSchema } = require('../validators/auth.validator');
+const { registerSchema, loginSchema, refreshSchema, updateProfileSchema, changePasswordSchema } = require('../validators/auth.validator');
 const upload = require('../middlewares/upload.middleware');
 
 /**
@@ -69,22 +69,14 @@ router.post('/login', authLimiter, validate(loginSchema), authController.login);
  * @swagger
  * /auth/refresh:
  *   post:
- *     summary: Refresh JWT Access Token
+ *     summary: Refresh JWT access token using the HttpOnly refresh cookie
  *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [token]
- *             properties:
- *               token: { type: string }
  *     responses:
  *       200:
  *         description: New access token generated
  */
-router.post('/refresh', validate(refreshSchema), authController.refresh);
+router.post('/refresh', authLimiter, validate(refreshSchema), authController.refresh);
+router.post('/logout', authLimiter, authController.logout);
 
 /**
  * @swagger
@@ -101,8 +93,8 @@ router.post('/refresh', validate(refreshSchema), authController.refresh);
 router.get('/me', requireAuth, authController.getMe);
 
 // Profile & Password Update
-router.put('/me/profile', requireAuth, authController.updateProfile);
-router.put('/me/password', requireAuth, authController.changePassword);
+router.put('/me/profile', requireAuth, validate(updateProfileSchema), authController.updateProfile);
+router.put('/me/password', requireAuth, validate(changePasswordSchema), authController.changePassword);
 
 // Avatar Upload
 router.put('/me/avatar', requireAuth, upload.avatarUpload, authController.updateAvatar);

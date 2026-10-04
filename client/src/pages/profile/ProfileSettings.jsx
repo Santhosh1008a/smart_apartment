@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useAuthStore } from "../../store/useAuthStore"
 import { updateProfile, changePassword, uploadAvatar } from "../../api/auth"
+import UserAvatar from "../../components/layout/UserAvatar"
 import {
   User, Mail, Phone, Shield, Lock, Eye, EyeOff, Camera,
   Building2, Home, Car, Wrench, CheckCircle, AlertCircle,
@@ -73,7 +74,7 @@ export default function ProfileSettings() {
   // Active tab
   const [activeTab, setActiveTab] = useState("profile")
 
-  const avatarUrl = avatarPreview || user?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id || "user"}`
+  useEffect(() => () => { if (avatarPreview) URL.revokeObjectURL(avatarPreview) }, [avatarPreview])
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0]
@@ -116,8 +117,8 @@ export default function ProfileSettings() {
       showToast("New passwords do not match", "error")
       return
     }
-    if (pwForm.new_password.length < 6) {
-      showToast("Password must be at least 6 characters", "error")
+    if (pwForm.new_password.length < 12) {
+      showToast("Password must be at least 12 characters", "error")
       return
     }
     setPwLoading(true)
@@ -159,12 +160,7 @@ export default function ProfileSettings() {
           {/* Avatar */}
           <div className="relative shrink-0">
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-4 border-white/30 shadow-xl bg-white/20">
-              <img
-                src={avatarUrl}
-                alt="Avatar"
-                className="w-full h-full object-cover"
-                onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}` }}
-              />
+              <UserAvatar user={user} src={avatarPreview || user?.avatar_url} className="h-full w-full rounded-2xl object-cover" />
             </div>
             <button
               onClick={() => fileRef.current?.click()}
@@ -387,7 +383,7 @@ export default function ProfileSettings() {
                 show={showNew}
                 onToggle={() => setShowNew(v => !v)}
                 onChange={v => setPwForm(p => ({ ...p, new_password: v }))}
-                placeholder="Min. 6 characters"
+                placeholder="Min. 12 characters"
                 required
               />
               <PasswordField
@@ -403,8 +399,8 @@ export default function ProfileSettings() {
               {/* Strength hints */}
               {pwForm.new_password && (
                 <div className="text-xs text-gray-400 space-y-1">
-                  <p className={pwForm.new_password.length >= 6 ? "text-emerald-500" : "text-red-400"}>
-                    {pwForm.new_password.length >= 6 ? "✓" : "✗"} At least 6 characters
+                  <p className={pwForm.new_password.length >= 12 ? "text-emerald-500" : "text-red-400"}>
+                    {pwForm.new_password.length >= 12 ? "✓" : "✗"} At least 12 characters
                   </p>
                   <p className={pwForm.new_password === pwForm.confirm_password && pwForm.confirm_password ? "text-emerald-500" : "text-gray-400"}>
                     {pwForm.new_password === pwForm.confirm_password && pwForm.confirm_password ? "✓" : "–"} Passwords match

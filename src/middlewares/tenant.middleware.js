@@ -48,4 +48,16 @@ const requireTenant = (req, res, next) => {
   next();
 };
 
-module.exports = { resolveTenant, requireTenant };
+// Apartment admins must always be bound to one tenant. Super admins may use
+// global routes or explicitly scope themselves with complex_id.
+const requireTenantForAdmins = (req, res, next) => {
+  if (req.user?.role === 'admin' && !req.complexId) {
+    return res.status(403).json({
+      success: false,
+      message: 'Apartment administrators must be assigned to a complex',
+    });
+  }
+  next();
+};
+
+module.exports = { resolveTenant, requireTenant, requireTenantForAdmins };

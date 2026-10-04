@@ -18,24 +18,20 @@ const consoleFormat = winston.format.combine(
   )
 );
 
+const transports = process.env.NODE_ENV === 'production'
+  ? [new winston.transports.Console({ format: logFormat })]
+  : [
+      new winston.transports.File({ filename: path.join(__dirname, '../../logs/error.log'), level: 'error' }),
+      new winston.transports.File({ filename: path.join(__dirname, '../../logs/combined.log') }),
+      new winston.transports.Console({ format: consoleFormat }),
+    ];
+
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
   format: logFormat,
   defaultMeta: { service: 'tdpcl-api' },
-  transports: [
-    new winston.transports.File({ filename: path.join(__dirname, '../../logs/error.log'), level: 'error' }),
-    new winston.transports.File({ filename: path.join(__dirname, '../../logs/combined.log') }),
-  ],
+  transports,
 });
-
-// If we're not in production then log to the `console`
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(
-    new winston.transports.Console({
-      format: consoleFormat,
-    })
-  );
-}
 
 // create a stream object with a 'write' function that will be used by morgan
 logger.stream = {

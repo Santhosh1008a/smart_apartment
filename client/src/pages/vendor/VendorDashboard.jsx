@@ -22,7 +22,7 @@ const PRIORITY_COLORS = {
 }
 
 export default function VendorDashboard() {
-  const { user } = useAuthStore()
+  const { user, accessToken } = useAuthStore()
   const [requests, setRequests]         = useState([])
   const [isLoading, setIsLoading]       = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
@@ -44,13 +44,11 @@ export default function VendorDashboard() {
     fetchData()
 
     // Socket.IO for real-time job updates
-    const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", { withCredentials: true })
-    socketRef.current = socket
-
-    socket.on("connect", () => {
-      if (user?.id)         socket.emit("join_user_room",    user.id)
-      if (user?.complex_id) socket.emit("join_complex_room", user.complex_id)
+    const socket = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
+      withCredentials: true,
+      auth: { token: accessToken },
     })
+    socketRef.current = socket
 
     // Update local state when any vendor request changes in the same complex
     socket.on("vendor_request_update", (updated) => {
@@ -72,7 +70,7 @@ export default function VendorDashboard() {
     })
 
     return () => socket.disconnect()
-  }, [user, fetchData])
+  }, [user?.id, accessToken, fetchData])
 
   const handleStatusUpdate = async (id, newStatus) => {
     if (actionLoading) return  // Prevent double-clicks

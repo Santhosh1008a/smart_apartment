@@ -3,16 +3,21 @@ const crypto = require('crypto');
 const { query, getClient } = require('../config/db');
 const { AppError } = require('../middlewares/error.middleware');
 
-const instance = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'dummy_key',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_secret',
-});
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID?.trim();
+const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+const instance = razorpayKeyId && razorpayKeySecret
+  ? new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret })
+  : null;
 
 exports.generateInvoice = async (req, res, next) => {
   try {
     const { unit_id, type, amount, due_date, period_start, period_end } = req.body;
     const admin_id = req.user.id;
     const { complexId } = req;
+
+    if (req.user.role === 'admin' && !complexId) {
+      return next(new AppError('Apartment administrators must be assigned to a complex', 403));
+    }
 
     // Verify unit belongs to admin's complex
     if (complexId) {
@@ -92,6 +97,10 @@ exports.listMyInvoices = async (req, res, next) => {
 exports.createOrder = async (req, res, next) => {
   let client;
   try {
+    if (!instance) {
+      return next(new AppError('Payments are unavailable because the payment provider is not configured', 503));
+    }
+
     const { invoice_id } = req.body;
     const user_id = req.user.id;
     const complexId = req.user.complex_id;
@@ -122,16 +131,7 @@ exports.createOrder = async (req, res, next) => {
       receipt: invoice_id.substring(0, 40)
     };
 
-    let order;
-    if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'dummy_key') {
-      order = {
-        id: 'mock_order_' + crypto.randomBytes(7).toString('hex'),
-        amount: options.amount,
-        currency: options.currency
-      };
-    } else {
-      order = await instance.orders.create(options);
-    }
+    const order = await instance.orders.create(options);
 
     client = await getClient();
     await client.query('BEGIN');
@@ -156,17 +156,12 @@ exports.createOrder = async (req, res, next) => {
         order_id: order.id,
         amount: order.amount,
         currency: order.currency,
-        key_id: process.env.RAZORPAY_KEY_ID
+        key_id: razorpayKeyId
       }
     });
 
   } catch (err) {
     if (client) await client.query('ROLLBACK');
-    
-    if (err.statusCode && err.error) {
-       console.error("Razorpay Error:", err.error);
-       return next(new AppError(err.error.description || 'Payment gateway error', 400));
-    }
     
     next(err);
   } finally {
@@ -177,17 +172,24 @@ exports.createOrder = async (req, res, next) => {
 exports.verifyPayment = async (req, res, next) => {
   let client;
   try {
+    if (!razorpayKeySecret) {
+      return next(new AppError('Payments are unavailable because the payment provider is not configured', 503));
+    }
+
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const user_id = req.user.id;
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
 
     const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || 'dummy_secret')
+      .createHmac('sha256', razorpayKeySecret)
       .update(body.toString())
       .digest('hex');
 
-    const isAuthentic = expectedSignature === razorpay_signature;
+    const providedSignature = Buffer.from(razorpay_signature, 'hex');
+    const expectedSignatureBuffer = Buffer.from(expectedSignature, 'hex');
+    const isAuthentic = providedSignature.length === expectedSignatureBuffer.length
+      && crypto.timingSafeEqual(providedSignature, expectedSignatureBuffer);
 
     if (!isAuthentic) {
       return next(new AppError('Payment verification failed', 400));

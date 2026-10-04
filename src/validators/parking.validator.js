@@ -1,7 +1,6 @@
 const Joi = require('joi');
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const uuid = Joi.string().pattern(uuidPattern).messages({ 'string.pattern.base': 'must be a valid UUID' });
+const uuid = Joi.string().uuid().messages({ 'string.guid': 'must be a valid UUID' });
 
 const createSlotSchema = Joi.object({
   display_name: Joi.string().trim().min(2).max(120).allow('', null),

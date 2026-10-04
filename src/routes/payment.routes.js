@@ -8,14 +8,12 @@ const { generateInvoiceSchema, createOrderSchema, verifyPaymentSchema } = requir
 
 const { resolveTenant } = require('../middlewares/tenant.middleware');
 
-router.use(requireAuth);
-
 // Admin routes for invoices (resolveTenant needed to set req.complexId)
-router.post('/admin/invoices', requireRole(['admin', 'super_admin']), resolveTenant, validate(generateInvoiceSchema), paymentController.generateInvoice);
+router.post('/admin/invoices', requireAuth, requireRole(['admin', 'super_admin']), resolveTenant, validate(generateInvoiceSchema), paymentController.generateInvoice);
 
 // Resident routes
-router.get('/invoices', paymentController.listMyInvoices);
-router.post('/payments/create-order', paymentLimiter, validate(createOrderSchema), paymentController.createOrder);
-router.post('/payments/verify', paymentLimiter, validate(verifyPaymentSchema), paymentController.verifyPayment);
+router.get('/invoices', requireAuth, paymentController.listMyInvoices);
+router.post('/payments/create-order', requireAuth, paymentLimiter, validate(createOrderSchema), paymentController.createOrder);
+router.post('/payments/verify', requireAuth, paymentLimiter, validate(verifyPaymentSchema), paymentController.verifyPayment);
 
 module.exports = router;

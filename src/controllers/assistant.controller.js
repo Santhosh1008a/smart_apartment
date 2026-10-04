@@ -6,7 +6,6 @@ exports.chat = async (req, res, next) => {
       user: req.user,
       complexId: req.complexId,
       message: req.body.message,
-      ip: req.ip,
     });
 
     res.status(200).json({

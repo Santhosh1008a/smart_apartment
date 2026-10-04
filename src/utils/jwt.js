@@ -8,9 +8,9 @@ exports.signAccessToken = (user) => {
   );
 };
 
-exports.signRefreshToken = (user) => {
+exports.signRefreshToken = (user, sessionId) => {
   return jwt.sign(
-    { id: user.id },
+    { id: user.id, jti: sessionId },
     process.env.JWT_REFRESH_SECRET,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
   );

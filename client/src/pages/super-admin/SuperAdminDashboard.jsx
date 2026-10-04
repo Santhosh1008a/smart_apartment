@@ -34,7 +34,7 @@ export default function SuperAdminDashboard() {
       setIsLoading(true)
       const res = await getSuperAdminDashboard()
       setData(res.success ? normalizeDashboard(res.data) : emptyDashboard)
-    } catch (err) {
+    } catch {
       toast.error("Failed to load dashboard")
     } finally {
       setIsLoading(false)
@@ -168,10 +168,10 @@ export default function SuperAdminDashboard() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateAdmin} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <Input required placeholder="Full name" value={adminForm.full_name} onChange={(e) => setAdminForm({ ...adminForm, full_name: e.target.value })} />
-              <Input required type="email" placeholder="Email" value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} />
-              <Input required placeholder="Phone" value={adminForm.phone} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })} />
-              <Input required type="password" placeholder="Password" value={adminForm.password} onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })} />
+              <Input required minLength={2} maxLength={255} autoComplete="name" placeholder="Full name" value={adminForm.full_name} onChange={(e) => setAdminForm({ ...adminForm, full_name: e.target.value })} />
+              <Input required type="email" autoComplete="email" placeholder="Email" value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} />
+              <Input required type="tel" pattern="[6-9][0-9]{9}" maxLength={10} autoComplete="tel" placeholder="10-digit Indian phone" value={adminForm.phone} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value.replace(/\D/g, '') })} />
+              <Input required minLength={12} maxLength={128} autoComplete="new-password" type="password" placeholder="Password (12+ characters)" value={adminForm.password} onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })} />
               <select
                 required
                 value={adminForm.complex_id}

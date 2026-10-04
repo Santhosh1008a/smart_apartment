@@ -10,13 +10,22 @@ const validate = (schema) => (req, res, next) => {
   });
 
   if (error) {
+    const details = error.details.map((d) => ({
+      field: d.path.join('.'),
+      message: d.message,
+    }));
+    // Request bodies can contain passwords, contact details, and other personal data.
+    // Keep validation logs limited to field names and messages.
+    require('../utils/logger').warn('Request validation failed', {
+      requestId: req.id,
+      method: req.method,
+      path: req.path,
+      details,
+    });
     return res.status(400).json({
       success: false,
       message: 'Validation failed',
-      errors: error.details.map((d) => ({
-        field: d.path.join('.'),
-        message: d.message,
-      })),
+      errors: details,
     });
   }
 

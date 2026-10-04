@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom"
-import { Building2 } from "lucide-react"
+import Logo from "../components/Logo"
 
 export default function AuthLayout() {
   return (
@@ -10,15 +10,13 @@ export default function AuthLayout() {
       
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="flex justify-center animate-in zoom-in duration-500">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-lg shadow-primary/30">
-            <Building2 className="w-7 h-7 text-primary-foreground" />
-          </div>
+          <Logo className="h-[132px] w-[126px]" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-foreground animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-both">
           Welcome back
         </h2>
         <p className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150 fill-mode-both">
-          Sign in to your Smart Apartment account
+          Sign in to your SyncLiving account
         </p>
       </div>
 

@@ -31,7 +31,7 @@ export default function Vendors() {
       
       if (venRes.success) setVendors(venRes.data)
       if (reqRes.success) setRequests(reqRes.data)
-    } catch (err) {
+    } catch {
       toast.error("Failed to load vendor data")
     } finally {
       setIsLoading(false)

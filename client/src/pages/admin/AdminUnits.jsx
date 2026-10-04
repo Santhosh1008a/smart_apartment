@@ -55,7 +55,7 @@ export default function AdminUnits() {
       ])
       if (buildingsRes.success) setBuildings(buildingsRes.data)
       if (unitsRes.success) setUnits(unitsRes.data)
-    } catch (err) {
+    } catch {
       toast.error("Failed to load data")
     } finally {
       setIsLoading(false)

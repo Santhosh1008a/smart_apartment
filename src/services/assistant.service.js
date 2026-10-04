@@ -7,12 +7,11 @@ const logger = require('../utils/logger');
 const FALLBACK_MESSAGE = 'I could not find matching society information for that request.';
 const MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 const MAX_ROWS = 8;
-const ASSISTANT_DEBUG = process.env.ASSISTANT_DEBUG === 'true';
+const ASSISTANT_DEBUG = process.env.NODE_ENV !== 'production' && process.env.ASSISTANT_DEBUG === 'true';
 const CHAT_HISTORY_LIMIT = 6;
 const CHAT_HISTORY_TTL_MS = 30 * 60 * 1000;
 const chatSessions = new Map();
 
-console.log('Gemini initialized');
 
 const ROLE_LABELS = {
   resident: 'Resident',
@@ -111,12 +110,6 @@ const getResultCount = (result) => {
   if (Array.isArray(result.data)) return result.data.length;
   if (result.data?.my_assignments) return result.data.my_assignments.length;
   return result.empty ? 0 : 1;
-};
-
-const getResultPreview = (result) => {
-  if (!result) return null;
-  if (Array.isArray(result.data)) return result.data.slice(0, 3);
-  return result.data || result.summary || null;
 };
 
 const isNonEmptyValue = (value) => {
@@ -278,7 +271,7 @@ const getTodaysVisitors = async ({ user, complexId, context }) => {
   const params = [];
   // Include passes valid today OR currently checked-in (pass may be for tomorrow but guard checked in early)
   const filters = [
-    "(vp.valid_from < CURRENT_DATE + INTERVAL '1 day' AND COALESCE(vp.valid_until, vp.valid_from) >= CURRENT_DATE OR vp.status = 'checked_in')"
+    "(vp.valid_from < CURRENT_DATE + INTERVAL '1 day' AND COALESCE(vp.valid_until, vp.valid_from) >= CURRENT_DATE OR vp.status IN ('checked_in', 'overdue'))"
   ];
 
   if (user.role === 'resident') {
@@ -326,6 +319,7 @@ const getTodaysVisitors = async ({ user, complexId, context }) => {
       total_today: rows.length,
       checked_in: rows.filter((row) => row.status === 'checked_in').length,
       pending: rows.filter((row) => row.status === 'pending').length,
+      overdue: rows.filter((row) => row.status === 'overdue').length,
     },
   };
 };
@@ -734,7 +728,7 @@ const classifyIntentWithGemini = async ({ message, role, history }) => {
     const result = await chat.sendMessage(`Role: ${role}\nMessage: ${message}`);
     return parseIntent(result.response.text()) || 'unknown';
   } catch (err) {
-    logger.warn('Gemini intent classification failed', { message: err.message });
+    logger.warn('Gemini intent classification failed', { errorName: err.name, errorCode: err.code || err.status });
     return 'unknown';
   }
 };
@@ -788,8 +782,9 @@ const humanFallbackResponse = ({ intent, intentResult }) => {
       return `There are ${summary.overdue_count} overdue invoice${summary.overdue_count === 1 ? '' : 's'} totaling ${formatCurrency(summary.overdue_total)}.`;
 
     case 'today_visitors':
-      if (intentResult.empty) return 'You currently do not have any active visitors today.';
-      return `You have ${summary.total_today} visitor${summary.total_today === 1 ? '' : 's'} scheduled today. ${summary.checked_in} checked in, ${summary.pending} pending.`;
+      if (intentResult.empty) return 'You currently have no active visitors today.';
+      if (summary.overdue > 0) return `${summary.overdue} visitor${summary.overdue === 1 ? ' is' : 's are'} still marked inside beyond the approved visit duration.`;
+      return `You have ${summary.total_today} visitor${summary.total_today === 1 ? '' : 's'} scheduled today. ${summary.checked_in} inside, ${summary.pending} pending.`;
 
     case 'parking_status': {
       const assignment = data?.my_assignments?.[0];
@@ -878,7 +873,7 @@ const buildGeminiContext = ({ role, intent, intentResult }) => ({
 });
 
 const RESPONSE_SYSTEM_INSTRUCTION = [
-  'You are a friendly, knowledgeable Smart Apartment Management assistant helping residents, admins, and security staff.',
+  'You are a friendly, knowledgeable SyncLiving AI Society Assistant helping residents, admins, and security staff.',
   'Use only the validated backend context provided for any facts, counts, amounts, names, dates, or statuses. Never invent data.',
   'Use prior chat history only to understand what the user is following up on — never treat history as fresh data.',
   'Respond conversationally and warmly. Sound like a helpful colleague, not a system report.',
@@ -916,12 +911,12 @@ const formatWithGemini = async ({ userId, role, message, intent, intentResult })
     if (intent === 'analytics' && !/\d/.test(text)) return fallback;
     return text || fallback;
   } catch (err) {
-    logger.warn('Gemini assistant formatting failed', { message: err.message });
+    logger.warn('Gemini assistant formatting failed', { errorName: err.name, errorCode: err.code || err.status });
     return fallback;
   }
 };
 
-const handlePrompt = async ({ user, complexId, message, ip }) => {
+const handlePrompt = async ({ user, complexId, message }) => {
   const sanitized = sanitizePrompt(message);
   const suspicious = isSuspiciousPrompt(sanitized);
   const history = getChatHistory(user.id);
@@ -931,21 +926,11 @@ const handlePrompt = async ({ user, complexId, message, ip }) => {
   const scopedComplexId = context.complexId;
 
   logger.info('AI assistant incoming prompt', {
-    prompt: sanitized,
-    userId: user.id,
     role: user.role,
-    complexId: scopedComplexId,
-    unitId: context.primaryUnitId,
-    buildingId: context.primaryBuildingId,
   });
 
   logger.info('AI assistant detected intent', {
-    userId: user.id,
     role: user.role,
-    complexId: scopedComplexId,
-    unitId: context.primaryUnitId,
-    buildingId: context.primaryBuildingId,
-    residentId: context.residentId,
     intent,
     suspicious,
   });
@@ -953,13 +938,10 @@ const handlePrompt = async ({ user, complexId, message, ip }) => {
   if (!handler || intent === 'complaints') {
     auditLogger.info({
       action: 'ai_assistant_prompt',
-      userId: user.id,
       userRole: user.role,
-      complexId: scopedComplexId,
       intent,
       allowed: false,
       suspicious,
-      ip,
     });
     const fallbackReply = humanFallbackResponse({ intent, intentResult: { empty: true, data: [], summary: null, rows: 0 } });
     saveChatTurn(user.id, sanitized, fallbackReply);
@@ -1000,9 +982,7 @@ const handlePrompt = async ({ user, complexId, message, ip }) => {
   }
 
   logger.info('AI assistant executing service', {
-    userId: user.id,
     role: user.role,
-    complexId: scopedComplexId,
     intent,
     service: handler.name,
     query: intent,
@@ -1015,16 +995,13 @@ const handlePrompt = async ({ user, complexId, message, ip }) => {
   const executedQuery = intentResult.queryName || intent;
 
   logger.info('AI assistant query results', {
-    userId: user.id,
     role: user.role,
-    complexId: scopedComplexId,
     intent,
     service: handler.name,
     query: executedQuery,
     focus: focus?.key || null,
     empty: intentResult.empty,
     rowsReturned: rows,
-    preview: getResultPreview(intentResult),
   });
 
   const replyMessage = await formatWithGemini({
@@ -1040,23 +1017,17 @@ const handlePrompt = async ({ user, complexId, message, ip }) => {
   saveChatTurn(user.id, sanitized, replyMessage);
 
   logger.info('AI assistant final generated response', {
-    userId: user.id,
     role: user.role,
-    complexId: scopedComplexId,
     intent,
     rowsReturned: rows,
-    response: replyMessage,
   });
 
   auditLogger.info({
     action: 'ai_assistant_prompt',
-    userId: user.id,
     userRole: user.role,
-    complexId: scopedComplexId,
     intent,
     allowed: true,
     suspicious,
-    ip,
   });
 
   const result = {

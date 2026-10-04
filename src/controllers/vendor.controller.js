@@ -111,22 +111,35 @@ exports.updateRequestStatus = async (req, res, next) => {
       ));
     }
 
-    let updateQuery = `UPDATE vendor_requests SET status = $1 WHERE id = $2 RETURNING *`;
-    let queryParams = [status, id];
-
-    if (currentStatus === 'pending' && status === 'assigned') {
-      updateQuery = `UPDATE vendor_requests SET status = $1, assigned_vendor_id = $3 WHERE id = $2 RETURNING *`;
-      queryParams = [status, id, vendorId];
+    const assignsToSelf = currentStatus === 'pending' && status === 'assigned';
+    const { rows } = await query(
+      `UPDATE vendor_requests vr
+       SET status = $1,
+           assigned_vendor_id = CASE WHEN $7 THEN $3 ELSE vr.assigned_vendor_id END
+       FROM units un
+       JOIN buildings b ON b.id = un.building_id
+       WHERE vr.id = $2
+         AND vr.unit_id = un.id
+         AND b.complex_id = $4
+         AND vr.status = $5
+         AND (
+           vr.assigned_vendor_id = $3
+           OR ($5 = 'pending' AND vr.assigned_vendor_id IS NULL AND vr.category = $6)
+         )
+       RETURNING vr.*`,
+      [status, id, vendorId, complexId, currentStatus, vendorCategory, assignsToSelf]
+    );
+    if (rows.length === 0) {
+      return next(new AppError('Request status changed or it is no longer assigned to you', 409));
     }
 
-    const { rows } = await query(updateQuery, queryParams);
-
-    // Emit real-time update scoped to complex room
+    // Send request details only to the requester and assigned vendor.
     const io = req.app.get('io');
-    if (io && complexId) {
-      io.to(`complex:${complexId}`).emit('vendor_request_update', rows[0]);
-    } else if (io) {
-      io.emit('vendor_request_update', rows[0]); // fallback
+    if (io) {
+      io.to(`user:${rows[0].user_id}`).emit('vendor_request_update', rows[0]);
+      if (rows[0].assigned_vendor_id) {
+        io.to(`user:${rows[0].assigned_vendor_id}`).emit('vendor_request_update', rows[0]);
+      }
     }
 
     // Notify the requester about status changes

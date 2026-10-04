@@ -60,7 +60,7 @@ export default function AdminDashboard() {
         setStats(statsRes.success ? normalizeStats(statsRes.data) : emptyStats)
         setPayments(paymentsRes.success ? normalizePayments(paymentsRes.data) : emptyPayments)
         setTrends(trendsRes.success ? normalizeTrends(trendsRes.data) : emptyTrends)
-      } catch (err) {
+      } catch {
         toast.error("Error loading admin dashboard")
       } finally {
         setIsLoading(false)

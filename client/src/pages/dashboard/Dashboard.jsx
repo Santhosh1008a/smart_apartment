@@ -59,7 +59,7 @@ export default function Dashboard() {
 
         setRecentPasses(passes.slice(0, 3))
         setRecentInvoices(invoices.filter(i => i.status !== 'paid').slice(0, 3))
-      } catch (err) {
+      } catch {
         toast.error("Error loading dashboard data")
       } finally {
         setIsLoading(false)

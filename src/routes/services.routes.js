@@ -15,7 +15,7 @@ router.use(requireAuth);
 router.use(resolveTenant);
 
 // Emergency
-router.post('/emergencies', validate(triggerEmergencySchema), servicesController.triggerEmergency);
+router.post('/emergencies', requireRole(['admin', 'security', 'resident']), requireTenant, validate(triggerEmergencySchema), servicesController.triggerEmergency);
 router.get('/emergencies', requireRole(['admin', 'security', 'super_admin', 'resident']), servicesController.listEmergencies);
 router.patch('/emergencies/:id', requireRole(['admin', 'security', 'super_admin', 'resident']), servicesController.resolveEmergency);
 
