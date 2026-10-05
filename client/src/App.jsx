@@ -14,6 +14,7 @@ const Payments = lazy(() => import("./pages/payments/Payments"))
 const Vendors = lazy(() => import("./pages/vendors/Vendors"))
 const Parking = lazy(() => import("./pages/parking/Parking"))
 const Emergency = lazy(() => import("./pages/emergency/Emergency"))
+const Notices = lazy(() => import("./pages/notices/Notices"))
 
 const AdminLayout = lazy(() => import("./layouts/AdminLayout"))
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"))
@@ -40,6 +41,7 @@ const LegalPage = lazy(() => import("./pages/legal/LegalPage"))
 const PrivacyRequestInbox = lazy(() => import("./pages/super-admin/PrivacyRequestInbox"))
 import LegalFooter from "./components/layout/LegalFooter"
 import { getRoleBasedPath } from "./utils/rolePath"
+import { Toaster } from "react-hot-toast"
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -139,6 +141,7 @@ function App() {
           <Route path="vendors" element={<Vendors />} />
           <Route path="parking" element={<Parking />} />
           <Route path="emergency" element={<Emergency />} />
+          <Route path="notices" element={<Notices />} />
           <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
@@ -158,6 +161,7 @@ function App() {
           <Route path="units" element={<AdminUnits />} />
           <Route path="parking" element={<AdminParking />} />
           <Route path="vendor-requests" element={<AdminVendorRequests />} />
+          <Route path="notices" element={<Notices />} />
           <Route path="profile" element={<ProfileSettings />} />
         </Route>
 
@@ -207,6 +211,7 @@ function App() {
       </Routes>
       </Suspense>
       <LegalFooter />
+      <Toaster position="top-right" />
     </BrowserRouter>
   )
 }

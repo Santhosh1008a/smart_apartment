@@ -4,9 +4,10 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from ".
 import { Badge } from "../../components/ui/Badge"
 import { getDashboardStats, getPaymentStatus, getAnalyticsTrends } from "../../api/admin"
 import { useAuthStore } from "../../store/useAuthStore"
-import { Users, Home, IndianRupee, FileText, TrendingUp, AlertTriangle, Loader2, Building2 } from "lucide-react"
+import { Users, Home, IndianRupee, FileText, TrendingUp, AlertTriangle, Loader2, Building2, Megaphone, ArrowRight } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts"
 import toast from "react-hot-toast"
+import { Link } from "react-router-dom"
 
 const asArray = (value) => Array.isArray(value) ? value : []
 const asNumber = (value) => Number(value || 0) || 0
@@ -125,6 +126,21 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      <Card className="border-violet-200 bg-gradient-to-r from-violet-50 to-white dark:border-violet-900 dark:from-violet-950/30 dark:to-card">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-violet-100 p-3 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300"><Megaphone className="h-5 w-5" /></div>
+            <div>
+              <h3 className="font-semibold">Notices &amp; Notifications</h3>
+              <p className="mt-1 text-sm text-gray-500">Create, preview, and send announcements to residents and current unit tenants in your complex.</p>
+            </div>
+          </div>
+          <Link to="/admin/notices" className="inline-flex shrink-0 items-center self-start rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700 sm:self-center">
+            Manage notices <ArrowRight className="ml-2 h-4 w-4" />
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* Analytics Trends */}
       {trends && (

@@ -19,6 +19,67 @@
   outline-offset: 3px;
 }
 
+.ai-mascot--hidden {
+  display: flex;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dbe4f0;
+  border-radius: 9999px;
+  background: #fff;
+  color: #1d4ed8;
+  box-shadow: 0 4px 12px rgb(7 35 91 / 18%);
+  cursor: pointer;
+}
+
+.ai-mascot--hidden:hover {
+  transform: translateY(-2px);
+}
+
+.ai-mascot__chat-icon {
+  width: 23px;
+  height: 23px;
+  stroke-width: 2;
+}
+
+.ai-mascot__context-menu {
+  position: fixed;
+  z-index: 110;
+  width: 148px;
+  min-height: 42px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 16%);
+  color: #0f172a;
+}
+
+.ai-mascot__context-menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-mascot__context-menu-item:hover {
+  background: #f1f5f9;
+}
+
+.ai-mascot__context-menu-item:focus-visible {
+  outline: 2px solid #39c8ff;
+  outline-offset: -2px;
+}
+
 .ai-mascot[data-state="dragging"] {
   cursor: grabbing;
 }

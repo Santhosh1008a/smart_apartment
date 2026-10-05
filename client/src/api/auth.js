@@ -1,4 +1,4 @@
-import api from './axios'
+import api, { refreshAccessToken } from './axios'
 
 export const loginUser = async (email, password) => {
   const { data } = await api.post('/auth/login', { email, password })
@@ -11,8 +11,7 @@ export const logoutUser = async () => {
 }
 
 export const refreshSession = async () => {
-  const { data } = await api.post('/auth/refresh', {})
-  return data
+  return refreshAccessToken()
 }
 
 export const registerUser = async ({ full_name, email, phone, password, complex_id, terms_accepted, privacy_acknowledged }) => {

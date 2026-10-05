@@ -1,8 +1,10 @@
 const request = require('supertest');
+const express = require('express');
 const { app } = require('../src/app');
 const { query, getClient } = require('../src/config/db');
 const crypto = require('crypto');
 const logger = require('../src/utils/logger');
+const { createAuthLimiter, AUTH_LIMIT_MAX, AUTH_LIMIT_WINDOW_MS } = require('../src/middlewares/rateLimiter.middleware');
 
 // Mock DB
 jest.mock('../src/config/db', () => ({
@@ -105,6 +107,106 @@ describe('SyncLiving API Tests', () => {
       expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
       expect(mockClient.release).toHaveBeenCalled();
     });
+
+    it('returns a conflict for an existing registration email or phone', async () => {
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockRejectedValueOnce(Object.assign(new Error('duplicate key value violates unique constraint "users_email_key"'), {
+            code: '23505', table: 'users', constraint: 'users_email_key',
+          }))
+          .mockResolvedValueOnce({ rows: [] }), // ROLLBACK
+        release: jest.fn(),
+      };
+      getClient.mockResolvedValueOnce(mockClient);
+
+      const res = await request(app).post('/api/v1/auth/register').send({
+        email: 'existing-resident@example.com',
+        phone: '9876543210',
+        password: 'registration-test-password-value',
+        full_name: 'New Resident',
+        complex_id: '0e88eb04-1eef-4bce-91f9-37c898018f3a',
+        terms_accepted: true,
+        privacy_acknowledged: true,
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe('An account with this email or phone already exists');
+      expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
+      expect(mockClient.query).not.toHaveBeenCalledWith('COMMIT');
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it('returns a validation response when the selected complex no longer exists', async () => {
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockRejectedValueOnce(Object.assign(new Error('insert or update violates foreign key constraint "users_complex_id_fkey"'), {
+            code: '23503', table: 'users', constraint: 'users_complex_id_fkey',
+          }))
+          .mockResolvedValueOnce({ rows: [] }), // ROLLBACK
+        release: jest.fn(),
+      };
+      getClient.mockResolvedValueOnce(mockClient);
+
+      const res = await request(app).post('/api/v1/auth/register').send({
+        email: 'new-resident@example.com',
+        phone: '9876543210',
+        password: 'registration-test-password-value',
+        full_name: 'New Resident',
+        complex_id: '0e88eb04-1eef-4bce-91f9-37c898018f3a',
+        terms_accepted: true,
+        privacy_acknowledged: true,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Please refresh the page and select an available apartment complex');
+      expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
+      expect(mockClient.query).not.toHaveBeenCalledWith('COMMIT');
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it('logs the original registration database exception without request secrets', async () => {
+      const loggerSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+      const databaseError = Object.assign(new Error('relation "user_notice_acknowledgements" does not exist'), {
+        code: '42P01',
+      });
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ id: 'ac91eccb-6ad0-4ed3-8485-af2fc6711011', email: 'new-resident@example.com', role: 'resident' }] })
+          .mockRejectedValueOnce(databaseError) // consent acknowledgement insert
+          .mockResolvedValueOnce({ rows: [] }), // ROLLBACK
+        release: jest.fn(),
+      };
+      getClient.mockResolvedValueOnce(mockClient);
+
+      try {
+        const res = await request(app).post('/api/v1/auth/register').send({
+          email: 'new-resident@example.com',
+          phone: '9876543210',
+          password: 'registration-test-password-value',
+          full_name: 'New Resident',
+          complex_id: '0e88eb04-1eef-4bce-91f9-37c898018f3a',
+          terms_accepted: true,
+          privacy_acknowledged: true,
+        });
+
+        expect(res.status).toBe(500);
+        expect(res.body.message).toBe('A server error occurred. Please try again shortly.');
+        expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
+        expect(loggerSpy).toHaveBeenCalledWith('Unhandled API error', expect.objectContaining({
+          errorCode: '42P01',
+          errorMessage: 'relation "user_notice_acknowledgements" does not exist',
+          errorStack: expect.stringContaining('relation "user_notice_acknowledgements" does not exist'),
+          path: '/api/v1/auth/register',
+        }));
+        expect(JSON.stringify(loggerSpy.mock.calls)).not.toContain('registration-test-password-value');
+        expect(JSON.stringify(res.body)).not.toContain('user_notice_acknowledgements');
+      } finally {
+        loggerSpy.mockRestore();
+      }
+    });
   });
 
   describe('Refresh sessions', () => {
@@ -121,8 +223,8 @@ describe('SyncLiving API Tests', () => {
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
           .mockResolvedValueOnce({ rows: [{ id: sessionId }] })
           .mockResolvedValueOnce({ rows: [{ id: userId, role: 'resident', is_active: true, complex_id: null, email: 'resident@example.test', full_name: 'Resident' }] })
-          .mockResolvedValueOnce({ rows: [] }) // revoke previous session
           .mockResolvedValueOnce({ rows: [] }) // insert rotated session
+          .mockResolvedValueOnce({ rows: [] }) // link/revoke previous session
           .mockResolvedValueOnce({ rows: [] }), // COMMIT
         release: jest.fn(),
       };
@@ -144,7 +246,57 @@ describe('SyncLiving API Tests', () => {
         expect.stringContaining('INSERT INTO auth_refresh_sessions'),
         expect.arrayContaining([expect.any(String), userId, expect.any(String), expect.any(Number)])
       );
+      const rotationQueries = mockClient.query.mock.calls.map(([sql]) => sql);
+      expect(rotationQueries.findIndex((sql) => sql.includes('INSERT INTO auth_refresh_sessions')))
+        .toBeLessThan(rotationQueries.findIndex((sql) => sql.includes('SET revoked_at = now(), replaced_by = $1')));
       expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it('rolls back a refresh database failure and returns no database details or refresh cookie', async () => {
+      const userId = '74d2d29c-4740-4c45-a20a-61b3ce529548';
+      const sessionId = '8e056b3e-a0af-417a-a5cb-6c4739095ed5';
+      process.env.JWT_ACCESS_SECRET = 'test_access_secret';
+      process.env.JWT_REFRESH_SECRET = 'test_refresh_secret';
+      const { signRefreshToken } = require('../src/utils/jwt');
+      const token = signRefreshToken({ id: userId }, sessionId);
+      const loggerSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [{ id: sessionId }] })
+          .mockResolvedValueOnce({ rows: [{ id: userId, role: 'resident', is_active: true, complex_id: null, email: 'resident@example.test', full_name: 'Resident' }] })
+          .mockResolvedValueOnce({ rows: [] }) // insert new session
+          .mockRejectedValueOnce(Object.assign(new Error('insert or update violates foreign key constraint'), {
+            code: '23503', constraint: 'auth_refresh_sessions_replaced_by_fkey',
+          }))
+          .mockResolvedValueOnce({ rows: [] }), // ROLLBACK
+        release: jest.fn(),
+      };
+      getClient.mockResolvedValueOnce(mockClient);
+
+      try {
+        const res = await request(app)
+          .post('/api/v1/auth/refresh')
+          .set('Cookie', `refreshToken=${token}`)
+          .send({});
+
+        expect(res.status).toBe(500);
+        expect(res.body.message).toBe('A server error occurred. Please try again shortly.');
+        expect(JSON.stringify(res.body)).not.toContain('auth_refresh_sessions');
+        expect(res.headers['set-cookie']).toBeUndefined();
+        expect(mockClient.query.mock.calls.map(([sql]) => sql)).toEqual([
+          'BEGIN', expect.any(String), expect.any(String), expect.stringContaining('INSERT INTO auth_refresh_sessions'),
+          expect.stringContaining('UPDATE auth_refresh_sessions SET revoked_at = now(), replaced_by = $1 WHERE id = $2'),
+          'ROLLBACK',
+        ]);
+        expect(mockClient.release).toHaveBeenCalled();
+        expect(loggerSpy).toHaveBeenCalledWith('Unhandled API error', expect.objectContaining({
+          errorCode: '23503',
+          path: '/api/v1/auth/refresh',
+        }));
+      } finally {
+        loggerSpy.mockRestore();
+      }
     });
 
     it('should reject a replayed or unknown refresh cookie', async () => {
@@ -162,6 +314,26 @@ describe('SyncLiving API Tests', () => {
       expect(res.status).toBe(401);
       expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
       expect(res.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
+  describe('Authentication rate limiter', () => {
+    it('keeps the configured 10-request, 15-minute limit and returns a 429 after the budget', async () => {
+      expect(AUTH_LIMIT_MAX).toBe(10);
+      expect(AUTH_LIMIT_WINDOW_MS).toBe(15 * 60 * 1000);
+      const limitedApp = express();
+      limitedApp.post('/auth', createAuthLimiter(), (_req, res) => res.sendStatus(200));
+
+      for (let attempt = 0; attempt < AUTH_LIMIT_MAX; attempt += 1) {
+        const allowed = await request(limitedApp).post('/auth').send({});
+        expect(allowed.status).toBe(200);
+      }
+      const limited = await request(limitedApp).post('/auth').send({});
+
+      expect(limited.status).toBe(429);
+      expect(limited.headers['ratelimit-remaining']).toBe('0');
+      expect(limited.headers['ratelimit-reset']).toBeTruthy();
+      expect(limited.body.message).toContain('try again later');
     });
   });
 

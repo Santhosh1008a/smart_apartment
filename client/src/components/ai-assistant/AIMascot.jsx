@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { MessageCircle } from "lucide-react"
 import idle01 from "../../../../src/components/ai-assistant/assets/idle-01.png"
 import idle03 from "../../../../src/components/ai-assistant/assets/idle-03.png"
 import idle05 from "../../../../src/components/ai-assistant/assets/idle-05.png"
@@ -38,6 +39,9 @@ import confused06 from "../../../../src/components/ai-assistant/assets/confused-
 import "./AIMascot.css"
 
 const POSITION_KEY = "syncliving.ai-mascot-position.v1"
+const VISIBILITY_KEY = "syncliving.ai-mascot-visible.v1"
+const CONTEXT_MENU_WIDTH = 148
+const CONTEXT_MENU_HEIGHT = 42
 const SEQUENCES = {
   idle: [idle01, idle03, idle05, idle07],
   click: [click01, click02, click03, click04],
@@ -49,6 +53,22 @@ const SEQUENCES = {
   error: [confused01, confused02, confused03, confused05, confused06],
 }
 const ONE_SHOT_STATES = new Set(["click", "happy", "success", "error"])
+
+function readSavedVisibility() {
+  try {
+    return window.localStorage.getItem(VISIBILITY_KEY) !== "false"
+  } catch {
+    return true
+  }
+}
+
+function saveVisibility(visible) {
+  try {
+    window.localStorage.setItem(VISIBILITY_KEY, String(visible))
+  } catch {
+    // The current page still honors the user's choice without browser storage.
+  }
+}
 
 function readSavedPosition() {
   try {
@@ -67,10 +87,19 @@ function savePosition(position) {
   }
 }
 
-function clampMascotPosition(candidate, buttonRef) {
+function getMascotDimensions(buttonRef, mascotVisible) {
+  if (!mascotVisible) {
+    return {
+      width: Math.min(100, Math.max(76, window.innerWidth * 0.08)),
+      height: Math.min(116, Math.max(88, window.innerWidth * 0.09)),
+    }
+  }
   const rect = buttonRef.current?.getBoundingClientRect()
-  const width = rect?.width || 96
-  const height = rect?.height || 112
+  return { width: rect?.width || 96, height: rect?.height || 112 }
+}
+
+function clampMascotPosition(candidate, buttonRef, mascotVisible = true) {
+  const { width, height } = getMascotDimensions(buttonRef, mascotVisible)
   const maxX = Math.max(8, window.innerWidth - width - 8)
   const maxY = Math.max(8, window.innerHeight - height - 8)
   return {
@@ -79,21 +108,25 @@ function clampMascotPosition(candidate, buttonRef) {
   }
 }
 
-function getDefaultMascotPosition(buttonRef) {
-  const rect = buttonRef.current?.getBoundingClientRect()
+function getDefaultMascotPosition(buttonRef, mascotVisible = true) {
+  const { width, height } = getMascotDimensions(buttonRef, mascotVisible)
   return clampMascotPosition({
-    x: window.innerWidth - (rect?.width || 96) - 20,
-    y: window.innerHeight - (rect?.height || 112) - 28,
-  }, buttonRef)
+    x: window.innerWidth - width - 20,
+    y: window.innerHeight - height - 28,
+  }, buttonRef, mascotVisible)
 }
 
 export default function AIMascot({ state = "idle", onActivate }) {
   const buttonRef = useRef(null)
+  const contextMenuRef = useRef(null)
+  const menuItemRef = useRef(null)
   const pointerRef = useRef(null)
   const positionRef = useRef(null)
   const suppressClickRef = useRef(false)
   const suppressTimerRef = useRef(null)
   const [position, setPosition] = useState(null)
+  const [mascotVisible, setMascotVisible] = useState(readSavedVisibility)
+  const [contextMenu, setContextMenu] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
   const [frameSelection, setFrameSelection] = useState({ state: "idle", index: 0 })
   const [autoBlink, setAutoBlink] = useState(false)
@@ -101,7 +134,7 @@ export default function AIMascot({ state = "idle", onActivate }) {
   const [isVisible, setIsVisible] = useState(true)
 
   const moveTo = (candidate, persist = false) => {
-    const next = clampMascotPosition(candidate, buttonRef)
+    const next = clampMascotPosition(candidate, buttonRef, mascotVisible)
     positionRef.current = next
     setPosition(next)
     if (persist) savePosition(next)
@@ -109,12 +142,12 @@ export default function AIMascot({ state = "idle", onActivate }) {
 
   useEffect(() => {
     const stored = readSavedPosition()
-    const start = stored || getDefaultMascotPosition(buttonRef)
-    positionRef.current = clampMascotPosition(start, buttonRef)
+    const start = stored || getDefaultMascotPosition(buttonRef, mascotVisible)
+    positionRef.current = clampMascotPosition(start, buttonRef, mascotVisible)
     setPosition(positionRef.current)
 
     const syncViewport = () => {
-      const next = clampMascotPosition(positionRef.current || getDefaultMascotPosition(buttonRef), buttonRef)
+      const next = clampMascotPosition(positionRef.current || getDefaultMascotPosition(buttonRef, mascotVisible), buttonRef, mascotVisible)
       positionRef.current = next
       setPosition(next)
       savePosition(next)
@@ -125,7 +158,7 @@ export default function AIMascot({ state = "idle", onActivate }) {
       window.removeEventListener("resize", syncViewport)
       window.removeEventListener("orientationchange", syncViewport)
     }
-  }, [])
+  }, [mascotVisible])
 
   useEffect(() => {
     const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)")
@@ -145,6 +178,29 @@ export default function AIMascot({ state = "idle", onActivate }) {
     window.clearTimeout(suppressTimerRef.current)
   }, [])
 
+  useEffect(() => {
+    if (!contextMenu) return undefined
+
+    menuItemRef.current?.focus()
+    const closeOnOutsidePointer = (event) => {
+      if (!contextMenuRef.current?.contains(event.target)) setContextMenu(null)
+    }
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      event.stopPropagation()
+      setContextMenu(null)
+      buttonRef.current?.focus()
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer)
+    document.addEventListener("keydown", closeOnEscape)
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer)
+      document.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [contextMenu])
+
   const explicitFace = state === "wink-left"
     ? winkLeft
     : state === "wink-right"
@@ -153,7 +209,7 @@ export default function AIMascot({ state = "idle", onActivate }) {
   const isWinking = state === "wink-left" || state === "wink-right"
   const bodyState = isDragging ? "dragging" : (SEQUENCES[state] ? state : "idle")
   const frames = SEQUENCES[bodyState]
-  const shouldAnimate = !reducedMotion && isVisible
+  const shouldAnimate = mascotVisible && !reducedMotion && isVisible
   const frameIndex = frameSelection.state === bodyState ? frameSelection.index : 0
 
   useEffect(() => {
@@ -195,8 +251,9 @@ export default function AIMascot({ state = "idle", onActivate }) {
   }, [isDragging, shouldAnimate, state])
 
   const startPointer = (event) => {
+    if (!mascotVisible) return
     if (!event.isPrimary || event.button !== 0) return
-    const start = positionRef.current || getDefaultMascotPosition(buttonRef)
+    const start = positionRef.current || getDefaultMascotPosition(buttonRef, mascotVisible)
     positionRef.current = start
     setPosition(start)
     pointerRef.current = {
@@ -250,6 +307,13 @@ export default function AIMascot({ state = "idle", onActivate }) {
   }
 
   const handleKeyDown = (event) => {
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault()
+      openContextMenu(event)
+      return
+    }
+    if (!mascotVisible) return
+
     const offsets = {
       ArrowUp: [0, -20],
       ArrowDown: [0, 20],
@@ -259,8 +323,41 @@ export default function AIMascot({ state = "idle", onActivate }) {
     const offset = offsets[event.key]
     if (!offset) return
     event.preventDefault()
-    const current = positionRef.current || getDefaultMascotPosition(buttonRef)
+    const current = positionRef.current || getDefaultMascotPosition(buttonRef, mascotVisible)
     moveTo({ x: current.x + offset[0], y: current.y + offset[1] }, true)
+  }
+
+  const openContextMenu = (event) => {
+    const rect = buttonRef.current?.getBoundingClientRect()
+    const keyboardOpened = event.type === "keydown"
+    const requestedX = keyboardOpened ? (rect?.left || 8) : event.clientX
+    const requestedY = keyboardOpened ? (rect?.bottom || 8) : event.clientY
+    const maxX = Math.max(8, window.innerWidth - CONTEXT_MENU_WIDTH - 8)
+    const maxY = Math.max(8, window.innerHeight - CONTEXT_MENU_HEIGHT - 8)
+    setContextMenu({
+      x: Math.min(Math.max(8, requestedX), maxX),
+      y: Math.min(Math.max(8, requestedY), maxY),
+    })
+  }
+
+  const handleContextMenu = (event) => {
+    event.preventDefault()
+    openContextMenu(event)
+  }
+
+  const toggleMascotVisibility = () => {
+    const nextVisibility = !mascotVisible
+    setMascotVisible(nextVisibility)
+    saveVisibility(nextVisibility)
+    setContextMenu(null)
+    buttonRef.current?.focus()
+  }
+
+  const handleMenuKeyDown = (event) => {
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      event.preventDefault()
+      menuItemRef.current?.focus()
+    }
   }
 
   const faceFrame = explicitFace || (autoBlink ? blink02 : null)
@@ -276,32 +373,73 @@ export default function AIMascot({ state = "idle", onActivate }) {
           : "Ready"
 
   return (
-    <button
-      ref={buttonRef}
-      type="button"
-      className="ai-mascot"
-      style={position ? { left: `${position.x}px`, top: `${position.y}px` } : undefined}
-      data-state={isDragging ? "dragging" : state}
-      onPointerDown={startPointer}
-      onPointerMove={movePointer}
-      onPointerUp={endPointer}
-      onPointerCancel={endPointer}
-      onLostPointerCapture={endPointer}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      aria-label={`Open SyncLiving AI assistant. ${stateLabel}. Use arrow keys to move the mascot.`}
-      title="Ask SyncLiving AI · Drag to move · Use arrow keys to reposition"
-    >
-      <span className="ai-mascot__art" aria-hidden="true">
-        <img className="ai-mascot__body" src={currentFrame} alt="" draggable="false" />
-        {isWinking && (
-          <span className="ai-mascot__wink-overlay">
-            <span className="ai-mascot__screen" />
-            <img className="ai-mascot__eyes" src={faceFrame} alt="" draggable="false" />
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`ai-mascot${mascotVisible ? "" : " ai-mascot--hidden"}`}
+        style={position ? {
+          left: mascotVisible ? `${position.x}px` : `calc(${position.x}px + clamp(28px, calc(8vw - 48px), 52px))`,
+          top: mascotVisible ? `${position.y}px` : `calc(${position.y}px + clamp(40px, calc(9vw - 48px), 68px))`,
+        } : undefined}
+        data-state={isDragging ? "dragging" : state}
+        onPointerDown={startPointer}
+        onPointerMove={movePointer}
+        onPointerUp={endPointer}
+        onPointerCancel={endPointer}
+        onLostPointerCapture={endPointer}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        onContextMenu={handleContextMenu}
+        aria-label={mascotVisible
+          ? `Open SyncLiving AI assistant. ${stateLabel}. Use arrow keys to move the mascot.`
+          : "Open SyncLiving AI assistant. Mascot hidden. Right-click for options."}
+        aria-haspopup="menu"
+        aria-expanded={Boolean(contextMenu)}
+        title={mascotVisible
+          ? "Ask SyncLiving AI · Drag to move · Right-click to hide"
+          : "Ask SyncLiving AI · Right-click to show mascot"}
+      >
+        {mascotVisible ? (
+          <span className="ai-mascot__art" aria-hidden="true">
+            <img className="ai-mascot__body" src={currentFrame} alt="" draggable="false" />
+            {isWinking && (
+              <span className="ai-mascot__wink-overlay">
+                <span className="ai-mascot__screen" />
+                <img className="ai-mascot__eyes" src={faceFrame} alt="" draggable="false" />
+              </span>
+            )}
+            {faceFrame && !isWinking && <img className="ai-mascot__face" src={faceFrame} alt="" draggable="false" />}
           </span>
+        ) : (
+          <MessageCircle className="ai-mascot__chat-icon" aria-hidden="true" />
         )}
-        {faceFrame && !isWinking && <img className="ai-mascot__face" src={faceFrame} alt="" draggable="false" />}
-      </span>
-    </button>
+      </button>
+
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label="Mascot options"
+          className="ai-mascot__context-menu"
+          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+          onKeyDown={handleMenuKeyDown}
+        >
+          <button
+            ref={menuItemRef}
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            className="ai-mascot__context-menu-item"
+            onClick={toggleMascotVisibility}
+            onBlur={(event) => {
+              if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setContextMenu(null)
+            }}
+          >
+            {mascotVisible ? "Hide mascot" : "Show mascot"}
+          </button>
+        </div>
+      )}
+    </>
   )
 }

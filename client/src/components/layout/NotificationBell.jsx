@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { Bell, Check, Trash2, ShieldAlert, CreditCard, UserCheck, Info } from "lucide-react"
+import { Bell, Check, ShieldAlert, CreditCard, UserCheck, Info, Megaphone } from "lucide-react"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useNotificationStore } from "../../store/useNotificationStore"
 import { cn } from "../../utils/cn"
@@ -9,7 +9,7 @@ export default function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef(null)
   const { user, accessToken } = useAuthStore()
-  const { notifications, unreadCount, fetchNotifications, fetchUnreadCount, markAsRead, markAllAsRead, addRealtimeNotification } = useNotificationStore()
+  const { notifications, unreadCount, fetchNotifications, fetchUnreadCount, markAsRead, markAllAsRead, addRealtimeNotification, updateRealtimeNotification } = useNotificationStore()
 
   // Click outside to close
   useEffect(() => {
@@ -37,9 +37,12 @@ export default function NotificationBell() {
     socket.on("notification", (notification) => {
       addRealtimeNotification(notification)
     })
+    socket.on("notification_updated", (notification) => {
+      updateRealtimeNotification(notification)
+    })
 
     return () => socket.disconnect()
-  }, [user, accessToken, addRealtimeNotification, fetchUnreadCount])
+  }, [user, accessToken, addRealtimeNotification, updateRealtimeNotification, fetchUnreadCount])
 
   // Fetch full list when dropdown opens
   useEffect(() => {
@@ -48,6 +51,7 @@ export default function NotificationBell() {
 
   const getIcon = (type) => {
     switch (type) {
+      case "society_notice": return <Megaphone className="w-5 h-5 text-violet-500" />
       case "emergency_alert": return <ShieldAlert className="w-5 h-5 text-red-500" />
       case "payment_reminder": return <CreditCard className="w-5 h-5 text-amber-500" />
       case "visitor_arrival": return <UserCheck className="w-5 h-5 text-emerald-500" />
@@ -57,6 +61,7 @@ export default function NotificationBell() {
 
   const getBg = (type) => {
     switch (type) {
+      case "society_notice": return "bg-violet-50 dark:bg-violet-900/20"
       case "emergency_alert": return "bg-red-50 dark:bg-red-900/20"
       case "payment_reminder": return "bg-amber-50 dark:bg-amber-900/20"
       case "visitor_arrival": return "bg-emerald-50 dark:bg-emerald-900/20"
@@ -71,9 +76,8 @@ export default function NotificationBell() {
         className="text-gray-400 hover:text-foreground relative p-2 rounded-full hover:bg-secondary transition-colors"
       >
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-2 flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-danger ring-2 ring-card"></span>
+          <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold leading-none text-danger-foreground ring-2 ring-card">
+            {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
         <Bell className="w-5 h-5" />
@@ -127,9 +131,17 @@ export default function NotificationBell() {
                       <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 leading-snug">
                         {n.message}
                       </p>
+                      {n.type === "society_notice" && n.metadata?.starts_at && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          {n.metadata.category?.replaceAll("_", " ")} · {new Date(n.metadata.starts_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-400 mt-2 font-medium">
                         {new Date(n.created_at).toLocaleString()}
                       </p>
+                      {n.type === "society_notice" && n.metadata?.status === "cancelled" && (
+                        <p className="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-400">This notice was cancelled</p>
+                      )}
                     </div>
                     {!n.is_read && (
                       <div className="shrink-0 flex items-center">

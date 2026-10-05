@@ -54,9 +54,27 @@ export const useNotificationStore = create((set) => ({
   },
 
   addRealtimeNotification: (notification) => {
-    set((state) => ({
-      notifications: [notification, ...state.notifications],
-      unreadCount: state.unreadCount + 1,
-    }))
+    set((state) => {
+      const alreadyExists = state.notifications.some((item) => item.id === notification.id)
+      return {
+        notifications: [notification, ...state.notifications.filter((item) => item.id !== notification.id)],
+        unreadCount: alreadyExists ? state.unreadCount : state.unreadCount + (notification.is_read ? 0 : 1),
+      }
+    })
+  },
+
+  updateRealtimeNotification: (notification) => {
+    set((state) => {
+      const previous = state.notifications.find((item) => item.id === notification.id)
+      const unreadDelta = previous
+        ? Number(!notification.is_read) - Number(!previous.is_read)
+        : 0
+      return {
+        notifications: previous
+          ? state.notifications.map((item) => item.id === notification.id ? notification : item)
+          : state.notifications,
+        unreadCount: Math.max(0, state.unreadCount + unreadDelta),
+      }
+    })
   },
 }))

@@ -13,7 +13,8 @@ import {
   Menu,
   Settings,
   X,
-  UserCircle
+  UserCircle,
+  Megaphone
 } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
@@ -28,6 +29,7 @@ const PAGE_TITLES = {
   "/parking": "Parking",
   "/vendors": "Vendor Services",
   "/emergency": "Emergency",
+  "/notices": "Notices & Notifications",
   "/profile": "Profile & Settings",
 }
 
@@ -50,6 +52,7 @@ export default function MainLayout() {
     { name: "Parking", href: "/parking", icon: Car },
     { name: "Vendor Services", href: "/vendors", icon: Wrench },
     { name: "Emergency", href: "/emergency", icon: AlertTriangle },
+    { name: "Notices & Notifications", href: "/notices", icon: Megaphone },
   ]
 
   const pageTitle = PAGE_TITLES[location.pathname] || "Dashboard"

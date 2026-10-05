@@ -39,6 +39,16 @@ const getTlsDiagnostic = (error) => {
   return {};
 };
 
+const redactDiagnosticText = (value, maxLength) => {
+  if (typeof value !== 'string') return undefined;
+  return value
+    .replace(/\b(password|passwd|access[_-]?token|refresh[_-]?token|authorization|api[_-]?key|secret|service[_-]?role[_-]?key)\b(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1$2[REDACTED]')
+    .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED_TOKEN]')
+    .replace(/(postgres(?:ql)?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[REDACTED]@')
+    .slice(0, maxLength);
+};
+
 const errorHandler = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
@@ -69,13 +79,29 @@ const errorHandler = (err, req, res, next) => {
   }
 
   const tlsDiagnostic = getTlsDiagnostic(err);
+  const registrationDiagnostics = requestPath === '/api/v1/auth/register'
+    ? {
+      errorMessage: redactDiagnosticText(err.message, 1200),
+      errorStack: redactDiagnosticText(err.stack, 6000),
+    }
+    : {};
   logger.error('Unhandled API error', {
     requestId: req.id,
     errorName: err.name,
     errorCode: err.code,
+    ...registrationDiagnostics,
     path: requestPath,
     ...tlsDiagnostic,
   });
+
+  const isNoticeEndpoint = /^\/(?:api\/v1\/)?(?:notices|notifications)(?:\/|$)/.test(requestPath);
+  if (err.code === '42P01' && isNoticeEndpoint) {
+    return res.status(503).json({
+      success: false,
+      status: 'error',
+      message: 'Society notices are temporarily unavailable because the required database setup is incomplete.',
+    });
+  }
 
   const isLoginRequest = requestPath === '/api/v1/auth/login';
   return res.status(err.statusCode >= 500 ? err.statusCode : 500).json({
@@ -91,4 +117,5 @@ module.exports = {
   AppError,
   errorHandler,
   getTlsDiagnostic,
+  redactDiagnosticText,
 };

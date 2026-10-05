@@ -13,8 +13,12 @@ const consoleFormat = winston.format.combine(
   winston.format.colorize(),
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.printf(
-    ({ timestamp, level, message, stack }) =>
-      `${timestamp} ${level}: ${stack || message}`
+    ({ timestamp, level, message, stack, ...metadata }) => {
+      const isRegistrationFailure = message === 'Unhandled API error'
+        && metadata.path === '/api/v1/auth/register';
+      const errorDetails = isRegistrationFailure ? ` ${JSON.stringify(metadata)}` : '';
+      return `${timestamp} ${level}: ${stack || message}${errorDetails}`;
+    }
   )
 );
 

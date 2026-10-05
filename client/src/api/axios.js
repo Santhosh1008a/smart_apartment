@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/useAuthStore'
+import { createSingleFlight, withExclusiveLock } from './singleFlight.mjs'
 
 const apiOrigin = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 const apiBaseUrl = `${apiOrigin}/api/v1`
@@ -18,7 +19,18 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-let refreshPromise = null
+const refreshSessionOnce = createSingleFlight(() => withExclusiveLock(
+  typeof navigator !== 'undefined' ? navigator.locks : undefined,
+  'syncliving-auth-refresh',
+  async () => {
+    const { data } = await axios.post(`${apiBaseUrl}/auth/refresh`, {}, { withCredentials: true })
+    if (!data.success || !data.accessToken) throw new Error('Session refresh failed')
+    useAuthStore.getState().setToken(data.accessToken)
+    return data
+  },
+))
+
+export const refreshAccessToken = refreshSessionOnce
 
 api.interceptors.response.use(
   (response) => response,
@@ -33,17 +45,7 @@ api.interceptors.response.use(
 
     originalRequest._retry = true
     try {
-      if (!refreshPromise) {
-        refreshPromise = axios.post(`${apiBaseUrl}/auth/refresh`, {}, { withCredentials: true })
-          .then(({ data }) => {
-            if (!data.success || !data.accessToken) throw new Error('Session refresh failed')
-            useAuthStore.getState().setToken(data.accessToken)
-            return data.accessToken
-          })
-          .finally(() => { refreshPromise = null })
-      }
-
-      const accessToken = await refreshPromise
+      const { accessToken } = await refreshSessionOnce()
       originalRequest.headers = originalRequest.headers || {}
       originalRequest.headers.Authorization = `Bearer ${accessToken}`
       return api(originalRequest)

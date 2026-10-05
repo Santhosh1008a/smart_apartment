@@ -57,4 +57,25 @@ const validateQuery = (schema) => (req, res, next) => {
   next();
 };
 
-module.exports = { validate, validateQuery };
+const validateParams = (schema) => (req, res, next) => {
+  const { error, value } = schema.validate(req.params, {
+    abortEarly: false,
+    stripUnknown: true,
+  });
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: error.details.map((d) => ({
+        field: d.path.join('.'),
+        message: d.message,
+      })),
+    });
+  }
+
+  req.params = value;
+  next();
+};
+
+module.exports = { validate, validateQuery, validateParams };

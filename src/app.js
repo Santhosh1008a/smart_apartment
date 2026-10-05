@@ -158,6 +158,7 @@ const notificationRoutes = require('./routes/notification.routes');
 const parkingRoutes = require('./routes/parking.routes');
 const assistantRoutes = require('./routes/assistant.routes');
 const privacyRoutes = require('./routes/privacy.routes');
+const noticeRoutes = require('./routes/notice.routes');
 
 // Mount Routes
 app.use('/api/v1/auth', authRoutes);
@@ -173,6 +174,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/parking', parkingRoutes);
 app.use('/api/v1/assistant', assistantRoutes);
 app.use('/api/v1/privacy', privacyRoutes);
+app.use('/api/v1/notices', noticeRoutes);
 
 app.use(errorHandler);
 

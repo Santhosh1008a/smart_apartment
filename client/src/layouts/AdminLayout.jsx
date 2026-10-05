@@ -17,7 +17,8 @@ import {
   DoorOpen,
   Wrench,
   X,
-  Car
+  Car,
+  Megaphone
 } from "lucide-react"
 import { cn } from "../utils/cn"
 import NotificationBell from "../components/layout/NotificationBell"
@@ -33,6 +34,7 @@ const PAGE_TITLES = {
   "/admin/units": "Units",
   "/admin/parking": "Parking Management",
   "/admin/vendor-requests": "Vendor Requests",
+  "/admin/notices": "Notices & Notifications",
   "/admin/profile": "Profile & Settings",
 }
 
@@ -52,6 +54,7 @@ export default function AdminLayout() {
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { name: "Manage Users", href: "/admin/users", icon: UserCog },
     { name: "Invoices & Billing", href: "/admin/invoices", icon: FileText },
+    { name: "Notices & Notifications", href: "/admin/notices", icon: Megaphone },
     { type: "separator", label: "Property Management" },
     { name: "Buildings", href: "/admin/buildings", icon: Building2 },
     { name: "Units", href: "/admin/units", icon: DoorOpen },

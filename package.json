@@ -45,7 +45,8 @@
     "node": ">=24.0.0 <25.0.0"
   },
   "jest": {
-    "setupFiles": ["<rootDir>/tests/setup.js"]
+    "setupFiles": ["<rootDir>/tests/setup.js"],
+    "testPathIgnorePatterns": ["/node_modules/", "/client/tests/"]
   },
   "overrides": {
     "qs": "^6.16.0"

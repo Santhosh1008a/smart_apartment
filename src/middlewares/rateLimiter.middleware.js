@@ -11,13 +11,16 @@ const globalLimiter = rateLimit({
 });
 
 // Stricter limiter for authentication attempts
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, 
-  max: 10,
+const AUTH_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_LIMIT_MAX = 10;
+const createAuthLimiter = () => rateLimit({
+  windowMs: AUTH_LIMIT_WINDOW_MS,
+  max: AUTH_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many login attempts, please try again later' }
 });
+const authLimiter = createAuthLimiter();
 
 // Limiter for payments
 const paymentLimiter = rateLimit({
@@ -41,6 +44,9 @@ const aiLimiter = rateLimit({
 module.exports = {
   globalLimiter,
   authLimiter,
+  createAuthLimiter,
+  AUTH_LIMIT_WINDOW_MS,
+  AUTH_LIMIT_MAX,
   paymentLimiter,
   aiLimiter
 };

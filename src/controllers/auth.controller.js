@@ -73,7 +73,13 @@ exports.register = async (req, res, next) => {
     if (client) {
       try { await client.query('ROLLBACK'); } catch { /* Preserve the original failure. */ }
     }
-    if (err.code === '23505') return next(new AppError('User with this email or phone already exists', 400));
+    if (err.code === '23505' && err.table === 'users'
+      && ['users_email_key', 'users_phone_key'].includes(err.constraint)) {
+      return next(new AppError('An account with this email or phone already exists', 409));
+    }
+    if (err.code === '23503' && err.table === 'users' && err.constraint === 'users_complex_id_fkey') {
+      return next(new AppError('Please refresh the page and select an available apartment complex', 400));
+    }
     next(err);
   } finally {
     client?.release();
@@ -177,14 +183,16 @@ exports.refresh = async (req, res, next) => {
     const nextSessionId = crypto.randomUUID();
     const nextRefreshToken = signRefreshToken(user, nextSessionId);
     const nextDecoded = verifyRefreshToken(nextRefreshToken);
-    await client.query(
-      'UPDATE auth_refresh_sessions SET revoked_at = now(), replaced_by = $1 WHERE id = $2',
-      [nextSessionId, decoded.jti]
-    );
+    // `replaced_by` is an immediate self-referencing FK. Insert the new row
+    // before pointing the old row at it; both operations remain atomic here.
     await client.query(
       `INSERT INTO auth_refresh_sessions (id, user_id, token_hash, expires_at)
        VALUES ($1, $2, $3, to_timestamp($4))`,
       [nextSessionId, user.id, hashRefreshToken(nextRefreshToken), nextDecoded.exp]
+    );
+    await client.query(
+      'UPDATE auth_refresh_sessions SET revoked_at = now(), replaced_by = $1 WHERE id = $2',
+      [nextSessionId, decoded.jti]
     );
     await client.query('COMMIT');
     const newAccessToken = signAccessToken(user);

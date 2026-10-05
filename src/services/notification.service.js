@@ -1,6 +1,7 @@
 const { query } = require('../config/db');
 const { sendEmail, sendSMS } = require('../utils/notifications');
 const logger = require('../utils/logger');
+const { hasActiveTenantUnitInNoticeComplex } = require('../utils/society-notice-scope');
 
 /**
  * Central notification service.
@@ -54,4 +55,40 @@ async function notifyMany(io, userIds, type, title, message, metadata = {}) {
   );
 }
 
-module.exports = { notify, notifyMany };
+async function ensureSocietyNoticeNotifications(user) {
+  if (!user || !['resident', 'tenant'].includes(user.role) || !user.id) return;
+  await query(
+    `INSERT INTO notifications (user_id, type, title, message, metadata)
+     SELECT $1, $2, n.title, n.message,
+            jsonb_build_object(
+              'notice_id', n.id,
+              'category', n.category,
+              'priority', n.priority,
+              'starts_at', n.starts_at,
+              'ends_at', n.ends_at,
+              'status', n.status
+            )
+       FROM notices n
+      WHERE n.status = 'sent'
+        AND EXISTS (
+          SELECT 1 FROM users notice_user
+           WHERE notice_user.id = $1
+             AND notice_user.role IN ('resident', 'tenant')
+             AND notice_user.is_active = true
+           AND ((notice_user.role = 'resident' AND notice_user.complex_id = n.complex_id)
+                  OR ${hasActiveTenantUnitInNoticeComplex('notice_user.id')})
+        )
+     ON CONFLICT (user_id, (metadata ->> 'notice_id'))
+       WHERE type = 'society_notice' AND metadata ? 'notice_id'
+     DO NOTHING`,
+    [user.id, 'society_notice']
+  );
+}
+
+function isMissingSocietyNoticesTable(error) {
+  return error?.code === '42P01'
+    && typeof error.message === 'string'
+    && /relation\s+(?:"(?:public\.)?notices"|(?:public\.)?notices)\s+does not exist/i.test(error.message);
+}
+
+module.exports = { notify, notifyMany, ensureSocietyNoticeNotifications, isMissingSocietyNoticesTable };

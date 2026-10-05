@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react"
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Card"
 import { useAuthStore } from "../../store/useAuthStore"
-import { Users, FileText, AlertCircle, ArrowRight, Loader2, Building2, DoorOpen, MapPin, AlertTriangle } from "lucide-react"
+import { Users, FileText, AlertCircle, ArrowRight, Loader2, Building2, DoorOpen, MapPin, AlertTriangle, Megaphone, CalendarClock } from "lucide-react"
 import { listMyPasses } from "../../api/visitors"
 import { listMyInvoices } from "../../api/payments"
 import { listEmergencies } from "../../api/services"
+import { listNotices } from "../../api/notices"
 import { Badge } from "../../components/ui/Badge"
 import { Link } from "react-router-dom"
 import toast from "react-hot-toast"
@@ -24,6 +25,7 @@ export default function Dashboard() {
   
   const [recentPasses, setRecentPasses] = useState([])
   const [recentInvoices, setRecentInvoices] = useState([])
+  const [recentNotices, setRecentNotices] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -32,19 +34,22 @@ export default function Dashboard() {
         setIsLoading(true)
 
         // Use allSettled so one failing API (e.g. emergencies 403) doesn't block the rest
-        const [passesResult, invoicesResult, alertsResult] = await Promise.allSettled([
+        const [passesResult, invoicesResult, alertsResult, noticesResult] = await Promise.allSettled([
           listMyPasses(),
           listMyInvoices(),
-          listEmergencies()
+          listEmergencies(),
+          listNotices()
         ])
 
         const passesRes = passesResult.status === 'fulfilled' ? passesResult.value : null
         const invoicesRes = invoicesResult.status === 'fulfilled' ? invoicesResult.value : null
         const alertsRes = alertsResult.status === 'fulfilled' ? alertsResult.value : null
+        const noticesRes = noticesResult.status === 'fulfilled' ? noticesResult.value : null
 
         const passes = passesRes?.success ? asArray(passesRes.data) : []
         const invoices = invoicesRes?.success ? asArray(invoicesRes.data) : []
         const alerts = alertsRes?.success ? asArray(alertsRes.data) : []
+        const notices = noticesRes?.success ? asArray(noticesRes.data) : []
 
         const activeVis = passes.filter(p => p.status === 'checked_in').length
         const unpaidInvoices = invoices.filter(i => i.status !== 'paid')
@@ -59,6 +64,10 @@ export default function Dashboard() {
 
         setRecentPasses(passes.slice(0, 3))
         setRecentInvoices(invoices.filter(i => i.status !== 'paid').slice(0, 3))
+        const currentNotices = notices
+          .filter(notice => notice.status === 'sent' && (!notice.ends_at || new Date(notice.ends_at) >= new Date()))
+          .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
+        setRecentNotices(currentNotices.slice(0, 3))
       } catch {
         toast.error("Error loading dashboard data")
       } finally {
@@ -210,6 +219,34 @@ export default function Dashboard() {
                     ))
                   )}
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="animate-in fade-in slide-in-from-bottom-6 delay-500 lg:col-span-2">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-border/40">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold"><Megaphone className="h-4 w-4 text-primary" />Notices &amp; Notifications</CardTitle>
+                <Link to="/notices" className="flex items-center text-sm font-medium text-primary transition-colors hover:text-primary-hover">
+                  View all <ArrowRight className="ml-1 h-4 w-4" />
+                </Link>
+              </CardHeader>
+              <CardContent className="pt-4">
+                {recentNotices.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-gray-500">No current announcements.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentNotices.map((notice) => (
+                      <Link key={notice.id} to="/notices" className={`block rounded-xl border p-3.5 transition-colors hover:bg-secondary/30 ${notice.priority === 'important' ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/10' : 'bg-background'}`}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-foreground">{notice.title}</p>
+                            <p className="mt-1 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">{notice.message}</p>
+                          </div>
+                          <span className="shrink-0 text-xs text-gray-500"><CalendarClock className="mr-1 inline h-3.5 w-3.5" />{new Date(notice.starts_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
