@@ -145,22 +145,17 @@ const FRAME_DELAY = {
 // States that play once and stop (do not loop)
 const ONE_SHOT_STATES = new Set(["click", "blink", "happy", "success", "error"])
 
-// Ambient reaction pool with weights (more blinks = more common)
+// Ambient reaction pool — thinking/working/success/error are AI-only states,
+// never triggered randomly. Blink is weighted higher to stay the most common.
 const AMBIENT_POOL = [
-  "blink", "blink", "blink",   // most frequent
-  "happy",                      // occasional
-  "thinking",                   // occasional
-  "working",                    // occasional
-  "error",                      // rare
+  "blink", "blink", "blink",   // most frequent ambient reaction
+  "happy",                      // occasional personality spark
 ]
 
 // How long each ambient reaction plays before returning to idle (ms)
 const AMBIENT_REACTION_DURATION = {
-  blink: 780,      // 9 frames × 75ms ≈ 675ms + buffer
-  happy: 1560,     // 12 frames × 120ms = 1440ms + buffer
-  thinking: 1800,  // loop for this long
-  working: 2000,   // loop for this long
-  error: 1050,     // 6 frames × 150ms = 900ms + buffer
+  blink: 780,    // 9 frames × 75ms ≈ 675ms + buffer
+  happy: 1560,   // 12 frames × 120ms = 1440ms + buffer
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -349,8 +344,8 @@ export default function AIMascot({ state: externalState = "idle", onActivate }) 
     let cancelled = false
 
     const scheduleReaction = () => {
-      // Wait a random idle period before the next reaction
-      const idleWait = 2200 + Math.random() * 3800  // 2.2 – 6 s
+      // Wait a random idle period before the next reaction (5 – 6 s)
+      const idleWait = 5000 + Math.random() * 1000
       ambientTimerRef.current = window.setTimeout(() => {
         if (cancelled) return
         const reaction = AMBIENT_POOL[Math.floor(Math.random() * AMBIENT_POOL.length)]
