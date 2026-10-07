@@ -1,92 +1,195 @@
 import { useEffect, useRef, useState } from "react"
 import { MessageCircle } from "lucide-react"
+
+// ── Idle (4 frames) ────────────────────────────────────────────────────────
 import idle01 from "../../../../src/components/ai-assistant/assets/idle-01.png"
 import idle03 from "../../../../src/components/ai-assistant/assets/idle-03.png"
 import idle05 from "../../../../src/components/ai-assistant/assets/idle-05.png"
 import idle07 from "../../../../src/components/ai-assistant/assets/idle-07.png"
+
+// ── Blink (9 frames: named set + sprite-sheet set) ─────────────────────────
+import blink01 from "../../../../src/components/ai-assistant/assets/blink-01.png"
 import blink02 from "../../../../src/components/ai-assistant/assets/blink-02.png"
-import winkLeft from "../../../../src/components/ai-assistant/assets/wink-left.png"
-import winkRight from "../../../../src/components/ai-assistant/assets/wink-right.png"
+import blink03 from "../../../../src/components/ai-assistant/assets/blink-03.png"
+import blink04 from "../../../../src/components/ai-assistant/assets/blink-04.png"
+import blink05 from "../../../../src/components/ai-assistant/assets/blink-05.png"
+import blink06 from "../../../../src/components/ai-assistant/assets/blink-06.png"
+import blinkF01 from "../../../../src/components/ai-assistant/assets/02_blinking_frame01.png"
+import blinkF05 from "../../../../src/components/ai-assistant/assets/02_blinking_frame05.png"
+import blinkF06 from "../../../../src/components/ai-assistant/assets/02_blinking_frame06.png"
+
+// ── Happy (12 frames: named set + sprite-sheet set) ────────────────────────
 import happy01 from "../../../../src/components/ai-assistant/assets/happy-01.png"
 import happy03 from "../../../../src/components/ai-assistant/assets/happy-03.png"
 import happy05 from "../../../../src/components/ai-assistant/assets/happy-05.png"
 import happy07 from "../../../../src/components/ai-assistant/assets/happy-07.png"
+import happyF01 from "../../../../src/components/ai-assistant/assets/04_happy_frame01.png"
+import happyF02 from "../../../../src/components/ai-assistant/assets/04_happy_frame02.png"
+import happyF03 from "../../../../src/components/ai-assistant/assets/04_happy_frame03.png"
+import happyF04 from "../../../../src/components/ai-assistant/assets/04_happy_frame04.png"
+import happyF05 from "../../../../src/components/ai-assistant/assets/04_happy_frame05.png"
+import happyF06 from "../../../../src/components/ai-assistant/assets/04_happy_frame06.png"
+import happyF07 from "../../../../src/components/ai-assistant/assets/04_happy_frame07.png"
+import happyF08 from "../../../../src/components/ai-assistant/assets/04_happy_frame08.png"
+
+// ── Thinking (5 frames) ───────────────────────────────────────────────────
 import thinking01 from "../../../../src/components/ai-assistant/assets/thinking-01.png"
 import thinking02 from "../../../../src/components/ai-assistant/assets/thinking-02.png"
 import thinking03 from "../../../../src/components/ai-assistant/assets/thinking-03.png"
 import thinking06 from "../../../../src/components/ai-assistant/assets/thinking-06.png"
 import thinking07 from "../../../../src/components/ai-assistant/assets/thinking-07.png"
+
+// ── Working (12 frames: named set + sprite-sheet set) ─────────────────────
 import working02 from "../../../../src/components/ai-assistant/assets/working-02.png"
 import working04 from "../../../../src/components/ai-assistant/assets/working-04.png"
 import working05 from "../../../../src/components/ai-assistant/assets/working-05.png"
 import working06 from "../../../../src/components/ai-assistant/assets/working-06.png"
+import workingF01 from "../../../../src/components/ai-assistant/assets/06_working_frame01.png"
+import workingF02 from "../../../../src/components/ai-assistant/assets/06_working_frame02.png"
+import workingF03 from "../../../../src/components/ai-assistant/assets/06_working_frame03.png"
+import workingF04 from "../../../../src/components/ai-assistant/assets/06_working_frame04.png"
+import workingF05 from "../../../../src/components/ai-assistant/assets/06_working_frame05.png"
+import workingF06 from "../../../../src/components/ai-assistant/assets/06_working_frame06.png"
+import workingF07 from "../../../../src/components/ai-assistant/assets/06_working_frame07.png"
+import workingF08 from "../../../../src/components/ai-assistant/assets/06_working_frame08.png"
+
+// ── Dragging (9 frames: named set + sprite-sheet set) ─────────────────────
 import dragging01 from "../../../../src/components/ai-assistant/assets/dragging-01.png"
 import dragging03 from "../../../../src/components/ai-assistant/assets/dragging-03.png"
 import dragging05 from "../../../../src/components/ai-assistant/assets/dragging-05.png"
+import draggingF01 from "../../../../src/components/ai-assistant/assets/07_dragging_frame01.png"
+import draggingF02 from "../../../../src/components/ai-assistant/assets/07_dragging_frame02.png"
+import draggingF03 from "../../../../src/components/ai-assistant/assets/07_dragging_frame03.png"
+import draggingF04 from "../../../../src/components/ai-assistant/assets/07_dragging_frame04.png"
+import draggingF05 from "../../../../src/components/ai-assistant/assets/07_dragging_frame05.png"
+import draggingF06 from "../../../../src/components/ai-assistant/assets/07_dragging_frame06.png"
+
+// ── Click / Tap (8 frames: named set + sprite-sheet set) ──────────────────
 import click01 from "../../../../src/components/ai-assistant/assets/click-01.png"
 import click02 from "../../../../src/components/ai-assistant/assets/click-02.png"
 import click03 from "../../../../src/components/ai-assistant/assets/click-03.png"
 import click04 from "../../../../src/components/ai-assistant/assets/click-04.png"
+import clickF01 from "../../../../src/components/ai-assistant/assets/08_click_tap_frame01.png"
+import clickF02 from "../../../../src/components/ai-assistant/assets/08_click_tap_frame02.png"
+import clickF03 from "../../../../src/components/ai-assistant/assets/08_click_tap_frame03.png"
+import clickF04 from "../../../../src/components/ai-assistant/assets/08_click_tap_frame04.png"
+
+// ── Success (10 frames: named set + sprite-sheet set) ─────────────────────
 import success01 from "../../../../src/components/ai-assistant/assets/success-01.png"
 import success03 from "../../../../src/components/ai-assistant/assets/success-03.png"
 import success05 from "../../../../src/components/ai-assistant/assets/success-05.png"
 import success06 from "../../../../src/components/ai-assistant/assets/success-06.png"
-import confused01 from "../../../../src/components/ai-assistant/assets/confused-01.png"
-import confused02 from "../../../../src/components/ai-assistant/assets/confused-02.png"
-import confused03 from "../../../../src/components/ai-assistant/assets/confused-03.png"
-import confused05 from "../../../../src/components/ai-assistant/assets/confused-05.png"
-import confused06 from "../../../../src/components/ai-assistant/assets/confused-06.png"
+import successF01 from "../../../../src/components/ai-assistant/assets/09_success_frame01.png"
+import successF02 from "../../../../src/components/ai-assistant/assets/09_success_frame02.png"
+import successF03 from "../../../../src/components/ai-assistant/assets/09_success_frame03.png"
+import successF04 from "../../../../src/components/ai-assistant/assets/09_success_frame04.png"
+import successF05 from "../../../../src/components/ai-assistant/assets/09_success_frame05.png"
+import successF06 from "../../../../src/components/ai-assistant/assets/09_success_frame06.png"
+
+// ── Error / Confused (6 frames from 10_error sprite sheet) ────────────────
+// Note: confused-*.png do not exist in assets; 10_error_frame* are used instead.
+import errorF01 from "../../../../src/components/ai-assistant/assets/10_error_frame01.png"
+import errorF02 from "../../../../src/components/ai-assistant/assets/10_error_frame02.png"
+import errorF03 from "../../../../src/components/ai-assistant/assets/10_error_frame03.png"
+import errorF04 from "../../../../src/components/ai-assistant/assets/10_error_frame04.png"
+import errorF05 from "../../../../src/components/ai-assistant/assets/10_error_frame05.png"
+import errorF06 from "../../../../src/components/ai-assistant/assets/10_error_frame06.png"
+
 import "./AIMascot.css"
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Animation sequences — all available frames used
+// ─────────────────────────────────────────────────────────────────────────────
+const SEQUENCES = {
+  // 4-frame idle float
+  idle: [idle01, idle03, idle05, idle07],
+
+  // 9-frame blink: open → close → reopen using both asset sets
+  blink: [blinkF01, blink01, blink02, blink03, blink04, blink05, blink06, blinkF05, blinkF06],
+
+  // 12-frame happy: named frames extended by sprite-sheet frames
+  happy: [happy01, happy03, happyF01, happyF02, happyF03, happyF04, happy05, happyF05, happyF06, happyF07, happyF08, happy07],
+
+  // 5-frame thinking loop
+  thinking: [thinking01, thinking02, thinking03, thinking06, thinking07],
+
+  // 12-frame working loop: named frames + sprite-sheet frames interleaved
+  working: [workingF01, workingF02, working02, workingF03, workingF04, working04, workingF05, working05, workingF06, working06, workingF07, workingF08],
+
+  // 9-frame dragging loop: named + sprite-sheet
+  dragging: [draggingF01, draggingF02, dragging01, draggingF03, draggingF04, dragging03, draggingF05, dragging05, draggingF06],
+
+  // 8-frame click reaction: named + sprite-sheet
+  click: [clickF01, click01, clickF02, click02, clickF03, click03, clickF04, click04],
+
+  // 10-frame success: named + sprite-sheet
+  success: [successF01, success01, successF02, successF03, success03, successF04, successF05, success05, successF06, success06],
+
+  // 6-frame error / confused (10_error_frame set)
+  error: [errorF01, errorF02, errorF03, errorF04, errorF05, errorF06],
+}
+
+// Frame durations (ms per frame) for each state
+const FRAME_DELAY = {
+  idle: 420,
+  blink: 75,
+  happy: 120,
+  thinking: 360,
+  working: 140,
+  dragging: 110,
+  click: 85,
+  success: 120,
+  error: 150,
+}
+
+// States that play once and stop (do not loop)
+const ONE_SHOT_STATES = new Set(["click", "blink", "happy", "success", "error"])
+
+// Ambient reaction pool with weights (more blinks = more common)
+const AMBIENT_POOL = [
+  "blink", "blink", "blink",   // most frequent
+  "happy",                      // occasional
+  "thinking",                   // occasional
+  "working",                    // occasional
+  "error",                      // rare
+]
+
+// How long each ambient reaction plays before returning to idle (ms)
+const AMBIENT_REACTION_DURATION = {
+  blink: 780,      // 9 frames × 75ms ≈ 675ms + buffer
+  happy: 1560,     // 12 frames × 120ms = 1440ms + buffer
+  thinking: 1800,  // loop for this long
+  working: 2000,   // loop for this long
+  error: 1050,     // 6 frames × 150ms = 900ms + buffer
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// localStorage helpers
+// ─────────────────────────────────────────────────────────────────────────────
 const POSITION_KEY = "syncliving.ai-mascot-position.v1"
 const VISIBILITY_KEY = "syncliving.ai-mascot-visible.v1"
 const CONTEXT_MENU_WIDTH = 148
 const CONTEXT_MENU_HEIGHT = 42
-const SEQUENCES = {
-  idle: [idle01, idle03, idle05, idle07],
-  click: [click01, click02, click03, click04],
-  happy: [happy01, happy03, happy05, happy07],
-  thinking: [thinking01, thinking02, thinking03, thinking06, thinking07],
-  working: [working02, working04, working05, working06],
-  dragging: [dragging01, dragging03, dragging05],
-  success: [success01, success03, success05, success06],
-  error: [confused01, confused02, confused03, confused05, confused06],
-}
-const ONE_SHOT_STATES = new Set(["click", "happy", "success", "error"])
 
 function readSavedVisibility() {
-  try {
-    return window.localStorage.getItem(VISIBILITY_KEY) !== "false"
-  } catch {
-    return true
-  }
+  try { return window.localStorage.getItem(VISIBILITY_KEY) !== "false" } catch { return true }
 }
-
 function saveVisibility(visible) {
-  try {
-    window.localStorage.setItem(VISIBILITY_KEY, String(visible))
-  } catch {
-    // The current page still honors the user's choice without browser storage.
-  }
+  try { window.localStorage.setItem(VISIBILITY_KEY, String(visible)) } catch { /* no-op */ }
 }
-
 function readSavedPosition() {
   try {
     const saved = JSON.parse(window.localStorage.getItem(POSITION_KEY) || "null")
     return Number.isFinite(saved?.x) && Number.isFinite(saved?.y) ? saved : null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
-
 function savePosition(position) {
-  try {
-    window.localStorage.setItem(POSITION_KEY, JSON.stringify(position))
-  } catch {
-    // The mascot remains draggable when browser storage is unavailable.
-  }
+  try { window.localStorage.setItem(POSITION_KEY, JSON.stringify(position)) } catch { /* no-op */ }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Position / viewport helpers
+// ─────────────────────────────────────────────────────────────────────────────
 function getMascotDimensions(buttonRef, mascotVisible) {
   if (!mascotVisible) {
     return {
@@ -110,13 +213,17 @@ function clampMascotPosition(candidate, buttonRef, mascotVisible = true) {
 
 function getDefaultMascotPosition(buttonRef, mascotVisible = true) {
   const { width, height } = getMascotDimensions(buttonRef, mascotVisible)
-  return clampMascotPosition({
-    x: window.innerWidth - width - 20,
-    y: window.innerHeight - height - 28,
-  }, buttonRef, mascotVisible)
+  return clampMascotPosition(
+    { x: window.innerWidth - width - 20, y: window.innerHeight - height - 28 },
+    buttonRef,
+    mascotVisible,
+  )
 }
 
-export default function AIMascot({ state = "idle", onActivate }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────────────
+export default function AIMascot({ state: externalState = "idle", onActivate }) {
   const buttonRef = useRef(null)
   const contextMenuRef = useRef(null)
   const menuItemRef = useRef(null)
@@ -124,15 +231,36 @@ export default function AIMascot({ state = "idle", onActivate }) {
   const positionRef = useRef(null)
   const suppressClickRef = useRef(false)
   const suppressTimerRef = useRef(null)
+  const ambientTimerRef = useRef(null)
+
   const [position, setPosition] = useState(null)
   const [mascotVisible, setMascotVisible] = useState(readSavedVisibility)
   const [contextMenu, setContextMenu] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [frameSelection, setFrameSelection] = useState({ state: "idle", index: 0 })
-  const [autoBlink, setAutoBlink] = useState(false)
+  const [ambientState, setAmbientState] = useState("idle")
+  const [frameIndex, setFrameIndex] = useState(0)
   const [reducedMotion, setReducedMotion] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
 
+  // ── Derived state ──────────────────────────────────────────────────────────
+  // wink-left / wink-right: no dedicated assets — use blink-03 as face overlay
+  // on top of an idle body. This preserves the wink overlay CSS structure.
+  const isWinking = externalState === "wink-left" || externalState === "wink-right"
+  const winkFaceFrame = isWinking ? blink03 : null
+
+  // Priority: dragging → external AI state → ambient random
+  const activeBodyState = isDragging
+    ? "dragging"
+    : isWinking
+      ? "idle"  // idle body + wink face overlay
+      : (externalState !== "idle" && SEQUENCES[externalState])
+        ? externalState
+        : (SEQUENCES[ambientState] ? ambientState : "idle")
+
+  const frames = SEQUENCES[activeBodyState] || SEQUENCES.idle
+  const shouldAnimate = mascotVisible && !reducedMotion && isVisible
+
+  // ── Viewport / position init ───────────────────────────────────────────────
   const moveTo = (candidate, persist = false) => {
     const next = clampMascotPosition(candidate, buttonRef, mascotVisible)
     positionRef.current = next
@@ -147,7 +275,11 @@ export default function AIMascot({ state = "idle", onActivate }) {
     setPosition(positionRef.current)
 
     const syncViewport = () => {
-      const next = clampMascotPosition(positionRef.current || getDefaultMascotPosition(buttonRef, mascotVisible), buttonRef, mascotVisible)
+      const next = clampMascotPosition(
+        positionRef.current || getDefaultMascotPosition(buttonRef, mascotVisible),
+        buttonRef,
+        mascotVisible,
+      )
       positionRef.current = next
       setPosition(next)
       savePosition(next)
@@ -160,27 +292,91 @@ export default function AIMascot({ state = "idle", onActivate }) {
     }
   }, [mascotVisible])
 
+  // ── Reduced-motion + tab visibility ───────────────────────────────────────
   useEffect(() => {
-    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)")
-    const syncMotion = () => setReducedMotion(motionPreference.matches)
+    const motionPref = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const syncMotion = () => setReducedMotion(motionPref.matches)
     const syncVisibility = () => setIsVisible(document.visibilityState === "visible")
     syncMotion()
     syncVisibility()
-    motionPreference.addEventListener?.("change", syncMotion)
+    motionPref.addEventListener?.("change", syncMotion)
     document.addEventListener("visibilitychange", syncVisibility)
     return () => {
-      motionPreference.removeEventListener?.("change", syncMotion)
+      motionPref.removeEventListener?.("change", syncMotion)
       document.removeEventListener("visibilitychange", syncVisibility)
     }
   }, [])
 
+  // ── Clean up suppress timer on unmount ────────────────────────────────────
   useEffect(() => () => {
     window.clearTimeout(suppressTimerRef.current)
+    window.clearTimeout(ambientTimerRef.current)
   }, [])
 
+  // ── Frame cycling ─────────────────────────────────────────────────────────
+  // Reset to frame 0 on every state change, then advance at the correct speed.
+  useEffect(() => {
+    setFrameIndex(0)
+    if (!shouldAnimate || frames.length < 2) return undefined
+
+    const delay = FRAME_DELAY[activeBodyState] || 200
+    const isOneShot = ONE_SHOT_STATES.has(activeBodyState)
+    let idx = 0
+
+    const interval = window.setInterval(() => {
+      idx = (idx + 1) % frames.length
+      setFrameIndex(idx)
+      if (isOneShot && idx >= frames.length - 1) {
+        window.clearInterval(interval)
+      }
+    }, delay)
+
+    return () => window.clearInterval(interval)
+  }, [activeBodyState, shouldAnimate]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Ambient random animation scheduler ────────────────────────────────────
+  // Runs ONLY when: tab visible + motion OK + no AI request + not dragging.
+  // Priority is enforced by the activeBodyState derivation above.
+  useEffect(() => {
+    window.clearTimeout(ambientTimerRef.current)
+
+    const canRunAmbient = shouldAnimate && externalState === "idle" && !isDragging
+    if (!canRunAmbient) {
+      setAmbientState("idle")
+      return undefined
+    }
+
+    let cancelled = false
+
+    const scheduleReaction = () => {
+      // Wait a random idle period before the next reaction
+      const idleWait = 2200 + Math.random() * 3800  // 2.2 – 6 s
+      ambientTimerRef.current = window.setTimeout(() => {
+        if (cancelled) return
+        const reaction = AMBIENT_POOL[Math.floor(Math.random() * AMBIENT_POOL.length)]
+        setAmbientState(reaction)
+        // After the reaction plays, return to idle and schedule the next one
+        const reactionDuration = AMBIENT_REACTION_DURATION[reaction] || 1000
+        ambientTimerRef.current = window.setTimeout(() => {
+          if (cancelled) return
+          setAmbientState("idle")
+          scheduleReaction()
+        }, reactionDuration)
+      }, idleWait)
+    }
+
+    scheduleReaction()
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(ambientTimerRef.current)
+      setAmbientState("idle")
+    }
+  }, [shouldAnimate, externalState, isDragging])
+
+  // ── Context-menu keyboard / outside-click handling ────────────────────────
   useEffect(() => {
     if (!contextMenu) return undefined
-
     menuItemRef.current?.focus()
     const closeOnOutsidePointer = (event) => {
       if (!contextMenuRef.current?.contains(event.target)) setContextMenu(null)
@@ -192,7 +388,6 @@ export default function AIMascot({ state = "idle", onActivate }) {
       setContextMenu(null)
       buttonRef.current?.focus()
     }
-
     document.addEventListener("pointerdown", closeOnOutsidePointer)
     document.addEventListener("keydown", closeOnEscape)
     return () => {
@@ -201,55 +396,7 @@ export default function AIMascot({ state = "idle", onActivate }) {
     }
   }, [contextMenu])
 
-  const explicitFace = state === "wink-left"
-    ? winkLeft
-    : state === "wink-right"
-      ? winkRight
-      : null
-  const isWinking = state === "wink-left" || state === "wink-right"
-  const bodyState = isDragging ? "dragging" : (SEQUENCES[state] ? state : "idle")
-  const frames = SEQUENCES[bodyState]
-  const shouldAnimate = mascotVisible && !reducedMotion && isVisible
-  const frameIndex = frameSelection.state === bodyState ? frameSelection.index : 0
-
-  useEffect(() => {
-    if (!shouldAnimate || frames.length < 2) return undefined
-
-    const frameDelay = bodyState === "idle" ? 420 : bodyState === "thinking" ? 360 : 190
-    let nextIndex = 0
-    const interval = window.setInterval(() => {
-      if (ONE_SHOT_STATES.has(bodyState) && nextIndex >= frames.length - 1) {
-        window.clearInterval(interval)
-        return
-      }
-      nextIndex = (nextIndex + 1) % frames.length
-      setFrameSelection({ state: bodyState, index: nextIndex })
-    }, frameDelay)
-    return () => window.clearInterval(interval)
-  }, [bodyState, frames, shouldAnimate])
-
-  useEffect(() => {
-    if (!shouldAnimate || state !== "idle" || isDragging) {
-      const resetTimer = window.setTimeout(() => setAutoBlink(false), 0)
-      return () => window.clearTimeout(resetTimer)
-    }
-
-    let blinkTimer
-    let reopenTimer
-    const scheduleBlink = () => {
-      blinkTimer = window.setTimeout(() => {
-        setAutoBlink(true)
-        reopenTimer = window.setTimeout(() => setAutoBlink(false), 145)
-        scheduleBlink()
-      }, 3800 + Math.random() * 2700)
-    }
-    scheduleBlink()
-    return () => {
-      window.clearTimeout(blinkTimer)
-      window.clearTimeout(reopenTimer)
-    }
-  }, [isDragging, shouldAnimate, state])
-
+  // ── Pointer / drag handlers ────────────────────────────────────────────────
   const startPointer = (event) => {
     if (!mascotVisible) return
     if (!event.isPrimary || event.button !== 0) return
@@ -275,10 +422,7 @@ export default function AIMascot({ state = "idle", onActivate }) {
     pointer.moved = true
     event.preventDefault()
     setIsDragging(true)
-    moveTo({
-      x: pointer.startPosition.x + deltaX,
-      y: pointer.startPosition.y + deltaY,
-    })
+    moveTo({ x: pointer.startPosition.x + deltaX, y: pointer.startPosition.y + deltaY })
   }
 
   const endPointer = (event) => {
@@ -294,6 +438,8 @@ export default function AIMascot({ state = "idle", onActivate }) {
       if (positionRef.current) savePosition(positionRef.current)
     }
     setIsDragging(false)
+    // Brief idle buffer before resuming ambient (prevents instant reaction on drop)
+    setAmbientState("idle")
   }
 
   const handleClick = (event) => {
@@ -313,13 +459,7 @@ export default function AIMascot({ state = "idle", onActivate }) {
       return
     }
     if (!mascotVisible) return
-
-    const offsets = {
-      ArrowUp: [0, -20],
-      ArrowDown: [0, 20],
-      ArrowLeft: [-20, 0],
-      ArrowRight: [20, 0],
-    }
+    const offsets = { ArrowUp: [0, -20], ArrowDown: [0, 20], ArrowLeft: [-20, 0], ArrowRight: [20, 0] }
     const offset = offsets[event.key]
     if (!offset) return
     event.preventDefault()
@@ -360,15 +500,16 @@ export default function AIMascot({ state = "idle", onActivate }) {
     }
   }
 
-  const faceFrame = explicitFace || (autoBlink ? blink02 : null)
+  // ── Render ─────────────────────────────────────────────────────────────────
   const currentFrame = frames[Math.min(frameIndex, frames.length - 1)]
-  const stateLabel = state === "thinking"
+
+  const stateLabel = externalState === "thinking"
     ? "Thinking"
-    : state === "working"
+    : externalState === "working"
       ? "Working"
-      : state === "success"
+      : externalState === "success"
         ? "Finished successfully"
-        : state === "error"
+        : externalState === "error"
           ? "Needs attention"
           : "Ready"
 
@@ -379,10 +520,14 @@ export default function AIMascot({ state = "idle", onActivate }) {
         type="button"
         className={`ai-mascot${mascotVisible ? "" : " ai-mascot--hidden"}`}
         style={position ? {
-          left: mascotVisible ? `${position.x}px` : `calc(${position.x}px + clamp(28px, calc(8vw - 48px), 52px))`,
-          top: mascotVisible ? `${position.y}px` : `calc(${position.y}px + clamp(40px, calc(9vw - 48px), 68px))`,
+          left: mascotVisible
+            ? `${position.x}px`
+            : `calc(${position.x}px + clamp(28px, calc(8vw - 48px), 52px))`,
+          top: mascotVisible
+            ? `${position.y}px`
+            : `calc(${position.y}px + clamp(40px, calc(9vw - 48px), 68px))`,
         } : undefined}
-        data-state={isDragging ? "dragging" : state}
+        data-state={isDragging ? "dragging" : activeBodyState}
         onPointerDown={startPointer}
         onPointerMove={movePointer}
         onPointerUp={endPointer}
@@ -403,13 +548,13 @@ export default function AIMascot({ state = "idle", onActivate }) {
         {mascotVisible ? (
           <span className="ai-mascot__art" aria-hidden="true">
             <img className="ai-mascot__body" src={currentFrame} alt="" draggable="false" />
+            {/* Wink overlay: idle body + blink-03 face approximates a wink */}
             {isWinking && (
               <span className="ai-mascot__wink-overlay">
                 <span className="ai-mascot__screen" />
-                <img className="ai-mascot__eyes" src={faceFrame} alt="" draggable="false" />
+                <img className="ai-mascot__eyes" src={winkFaceFrame} alt="" draggable="false" />
               </span>
             )}
-            {faceFrame && !isWinking && <img className="ai-mascot__face" src={faceFrame} alt="" draggable="false" />}
           </span>
         ) : (
           <MessageCircle className="ai-mascot__chat-icon" aria-hidden="true" />
